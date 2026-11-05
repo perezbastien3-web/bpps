@@ -270,6 +270,11 @@ td.mono{white-space:nowrap}
 .bc-zone:hover{opacity:.75}
 .h-scroll{overflow-x:auto}
 .ok-t{color:var(--ok);font-weight:700}.bad-t{color:var(--bad);font-weight:700}.warn-t{color:var(--warn);font-weight:700}
+
+.agrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px 22px;align-items:start}
+.agrid>div{min-width:0;overflow-x:auto}
+.card table select{max-width:100%}
+@media (max-width:700px){.agrid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -282,7 +287,7 @@ const html=htm.bind(React.createElement);
 /* =========================================================
    CONSTANTES
    ========================================================= */
-const APP_VERSION="0.9.3";
+const APP_VERSION="0.9.4";
 const SECURE=!!window.BPPS_SECURE;
 const STORE_KEY="bpps_store_v1";
 const STATUTS_PATIENT=["Actif","En pause","Terminé","Archivé"];
@@ -742,7 +747,7 @@ function NewPatientModal({onClose,onCreate}){
    ========================================================= */
 const FICHE=[
   ["Identité",[["id","ID Patient","ro"],["nom","Nom"],["prenom","Prénom"],["dob","Date de naissance","date"],["_age","Âge (calculé)","calc"],["sexe","Sexe","sel",["","F","M","Autre"]],["tel","Téléphone"],["email","Email"],["profession","Profession"]]],
-  ["Profil sportif",[["sport","Sport"],["niveau","Niveau"],["poste","Poste"],["dominance","Dominance","sel",["","Droite","Gauche","Ambidextre"]],["entrainements","Entraînements / semaine","number"],["volume","Volume hebdomadaire"],["objectifSportif","Objectif sportif","text2"]]],
+  ["Profil sportif",[["sport","Sport"],["niveau","Niveau"],["poste","Poste"],["dominance","Dominance","sel",["","Droite","Gauche","Ambidextre"]],["entrainements","Entraînements / semaine","number"],["volume","Volume hebdomadaire"],["objectifSportif","Objectif sportif","text2"],["pourQuand","Pour quand ? (échéance visée)","text2"]]],
   ["Prise en charge",[["motif","Motif de consultation","text2"],["diagnostic","Diagnostic","text2"],["cote","Côté concerné","sel",["","D","G","B"]],["dateBlessure","Date de blessure","date"],["dateChirurgie","Date de chirurgie","date"],["debutPEC","Début de prise en charge","date"],["medecin","Médecin"],["chirurgien","Chirurgien"],["statut","Statut","sel",STATUTS_PATIENT]]],
   ["Objectifs",[["objectifsPatient","Objectifs du patient (un par ligne)","area"],["objectifsTherapeutiques","Objectifs thérapeutiques (un par ligne)","area"]]],
   ["Antécédents",[["atcdMedicaux","Médicaux","area"],["atcdChirurgicaux","Chirurgicaux","area"],["atcdSportifs","Sportifs / blessures antérieures","area"],["traitements","Traitements en cours","area"]]],
@@ -1241,6 +1246,16 @@ function Sec({k,secs,en,setEn,children,right,region,essMode,essOpen,essToggle}){
 }
 function LRHead({cols,extra=[]}){return html`<thead><tr><th></th>${cols.map(c=>html`<th key=${c.k}>${c.l}</th>`)}${extra.map(x=>html`<th key=${x}>${x}</th>`)}</tr></thead>`}
 
+function MobTable({rows,cols,L,Sn,g,s,init,note}){
+  const diff=(k,m)=>{const a=num(g(`mobilite.${k}${m}_${L}`)),b=num(g(`mobilite.${k}${m}_${Sn}`));return html`<${Calc} cls=${"mono "+(a!==null&&b!==null&&b-a>0?"warn-t":a!==null&&b!==null?"ok-t":"")}>${a!==null&&b!==null?(a-b>0?"+":"")+fmtN(a-b)+"°":"—"}</${Calc}>`};
+  return html`<div style=${{overflowX:"auto"}}><table style=${{fontSize:13}}>
+    <thead><tr><th>Mouvement</th>${cols.map(c=>html`<th key=${c.k}>${c.l}</th>`)}<th style=${{textAlign:"center"}}>Écart lésé − sain</th></tr></thead>
+    <tbody>${[["P","Passive"],["A","Active"]].map(([m,lab])=>html`<${Fragment} key=${m}>
+      <tr><td colSpan=${cols.length+2} style=${{background:"var(--surface-2)",fontSize:11,fontWeight:800,letterSpacing:".1em",textTransform:"uppercase",color:"var(--ink-2)",padding:"6px 12px"}}>Mobilité ${lab.toLowerCase()}</td></tr>
+      ${rows.map(([k,l])=>html`<tr key=${k+m}><td>${l}</td>${cols.map(c=>html`<td key=${c.k}><${NumIn} v=${g(`mobilite.${k}${m}_${c.k}`)} on=${v=>s(`mobilite.${k}${m}_${c.k}`,v)} unit="°" w=${58}/>${init&&c.k===L&&html`<${Prev} v=${init.mobilite?.[`${k}${m}_${c.k}`]}/>`}</td>`)}<td style=${{textAlign:"center"}}>${diff(k,m)}</td></tr>`)}
+    </${Fragment}>`)}</tbody></table></div>
+    ${note&&html`<div className="sub" style=${{fontSize:11.5,marginTop:4}}>${note}</div>`}`;
+}
 function BilanEditor({db,pid,bilanId,draftInit,act,back,toast,setView}){
   const S=db.settings;const p=db.patients.find(x=>x.id===pid);
   const orig=bilanId?db.bilans.find(x=>x.id===bilanId):null;
@@ -1305,7 +1320,7 @@ function BilanEditor({db,pid,bilanId,draftInit,act,back,toast,setView}){
         ${d.type==="Initial"&&html`<div className="grid g3" style=${{gap:10,marginTop:12}}>
           <div className="note"><b>Motif :</b> ${p.motif||"—"}</div>
           <div className="note"><b>Que souhaitez-vous refaire ?</b><br/>${(p.objectifsPatient||"—").split("\n").join(" · ")}</div>
-          <div className="note"><b>Pour quand ?</b> ${p.objectifSportif||"—"}</div>
+          <div className="note"><b>Objectif sportif :</b> ${p.objectifSportif||"—"}<br/><b>Pour quand ?</b> ${p.pourQuand||html`<span className="sub">à renseigner dans la fiche</span>`}</div>
           <div className="note"><b>Antécédents médicaux :</b> ${p.atcdMedicaux||"—"}<br/><b>Chirurgicaux :</b> ${p.atcdChirurgicaux||"—"}</div>
           <div className="note"><b>Traumatiques / sportifs :</b> ${p.atcdSportifs||"—"}</div>
           <div className="note"><b>Traitements :</b> ${p.traitements||"—"}<br/><b>Profession :</b> ${p.profession||"—"}</div>
@@ -1371,12 +1386,7 @@ function BilanEditor({db,pid,bilanId,draftInit,act,back,toast,setView}){
         ${(()=>{const a=num(g(`perimetrie.fig8_${L}`)),b=num(g(`perimetrie.fig8_${Sn}`));return html`<tr><td>Figure of Eight</td>${cols.map(c=>html`<td key=${c.k}><${NumIn} v=${g(`perimetrie.fig8_${c.k}`)} on=${v=>s(`perimetrie.fig8_${c.k}`,v)} unit="cm"/>${init&&c.k===L&&html`<${Prev} v=${init.perimetrie?.[`fig8_${c.k}`]}/>`}</td>`)}<td><${Calc} cls=${"mono "+(a!==null&&b!==null&&a-b>=1?"warn-t":"")}>${a!==null&&b!==null?(a-b>0?"+":"")+fmtN(a-b,1)+" cm":"—"}</${Calc}></td></tr>`})()}
       </tbody></table><div className="sub" style=${{fontSize:11.5,marginTop:6}}>Mesure en huit (malléoles, naviculaire, base du 5e métatarsien). Une différence positive traduit un œdème du côté lésé.</div></${Sec}>
       <${Sec} k="mobilite" ...${sp} right=${html`<span className="chip" style=${{marginLeft:8}}>Score ${ce.mobilite===null?"—":r0(ce.mobilite)+"/100"}</span>`}>
-        <div className="grid g2" style=${{gap:14}}>
-        ${[["P","Passive"],["A","Active"]].map(([m,lab])=>html`<div key=${m}><div className="mini-t" style=${{marginTop:0}}>${lab}${m==="A"?" · utilisée pour le score si renseignée":""}</div>
-          <table style=${{fontSize:13}}><${LRHead} cols=${cols} extra=${["Différence"]}/><tbody>
-          ${ANK_AMPL.map(([k,l])=>{const a=num(g(`mobilite.${k}${m}_${L}`)),b=num(g(`mobilite.${k}${m}_${Sn}`));return html`<tr key=${k}><td>${l}</td>${cols.map(c=>html`<td key=${c.k}><${NumIn} v=${g(`mobilite.${k}${m}_${c.k}`)} on=${v=>s(`mobilite.${k}${m}_${c.k}`,v)} unit="°" w=${56}/>${init&&c.k===L&&html`<${Prev} v=${init.mobilite?.[`${k}${m}_${c.k}`]}/>`}</td>`)}<td><${Calc} cls=${"mono "+(a!==null&&b!==null&&b-a>0?"warn-t":"")}>${a!==null&&b!==null?(a-b>0?"+":"")+fmtN(a-b)+"°":"—"}</${Calc}></td></tr>`})}
-          </tbody></table></div>`)}
-        </div>
+        <${MobTable} rows=${ANK_AMPL} cols=${cols} L=${L} Sn=${Sn} g=${g} s=${s} init=${init} note="Le score utilise les valeurs actives si elles sont renseignées, sinon les passives."/>
         <div className="note" style=${{marginTop:10}}>Déficit de flexion dorsale <b>${det.mob?.defFD!=null?r0(det.mob.defFD)+"°":"—"}</b> vs côté sain. La flexion dorsale en charge se mesure dans la section WBLT.</div>
       </${Sec}>
       <${Sec} k="wblt" ...${sp} right=${html`<span className="chip" style=${{marginLeft:8}}>${det.mob?.def==null?"Écart —":"Écart "+fmtN(det.mob.def,1)+" cm"}</span>`}>
@@ -1398,12 +1408,7 @@ function BilanEditor({db,pid,bilanId,draftInit,act,back,toast,setView}){
       </tbody></table></${Sec}>`}
 
       ${isG&&html`<${Sec} k="mobilite" ...${sp} right=${html`<span className="chip" style=${{marginLeft:8}}>Score ${ce.mobilite===null?"—":r0(ce.mobilite)+"/100"}</span>`}>
-        <div className="grid g2" style=${{gap:14}}>
-        ${[["P","Passive"],["A","Active"]].map(([m,lab])=>html`<div key=${m}><div className="mini-t" style=${{marginTop:0}}>${lab}${S.mobGenou.useActive===(m==="A")?" · utilisée pour le score":""}</div>
-          <table style=${{fontSize:13}}><${LRHead} cols=${cols} extra=${["Différence"]}/><tbody>
-          ${[["flex","Flexion"],["ext","Extension"]].map(([k,l])=>{const a=num(g(`mobilite.${k}${m}_${L}`)),b=num(g(`mobilite.${k}${m}_${Sn}`));return html`<tr key=${k}><td>${l}</td>${cols.map(c=>html`<td key=${c.k}><${NumIn} v=${g(`mobilite.${k}${m}_${c.k}`)} on=${v=>s(`mobilite.${k}${m}_${c.k}`,v)} unit="°" w=${56}/>${init&&c.k===L&&html`<${Prev} v=${init.mobilite?.[`${k}${m}_${c.k}`]}/>`}</td>`)}<td><${Calc} cls=${"mono "+(a!==null&&b!==null&&b-a>0?"warn-t":"")}>${a!==null&&b!==null?(a-b>0?"+":"")+fmtN(a-b)+"°":"—"}</${Calc}></td></tr>`})}
-          </tbody></table></div>`)}
-        </div>
+        <${MobTable} rows=${[["flex","Flexion"],["ext","Extension"]]} cols=${cols} L=${L} Sn=${Sn} g=${g} s=${s} init=${init} note=${"Le score utilise les valeurs "+(S.mobGenou.useActive?"actives":"passives")+"."}/>
         <div className="note" style=${{marginTop:10}}>Déficit de flexion <b>${det.mob?.defFlex!=null?r0(det.mob.defFlex)+"°":"—"}</b> · déficit d'extension <b>${det.mob?.defExt!=null?r0(det.mob.defExt)+"°":"—"}</b>. Extension : saisir l'hyperextension en positif (+5°) et le flessum en négatif (−5°) ; la référence est le côté sain, hyperextension physiologique comprise.</div>
       </${Sec}>`}
 
@@ -1418,10 +1423,10 @@ function BilanEditor({db,pid,bilanId,draftInit,act,back,toast,setView}){
         </tbody></table>
         <div className="sub" style=${{fontSize:12,marginTop:8}}>Score force = moyenne des LSI cheville (fléchisseurs plantaires et dorsaux, inverseurs, éverseurs) et du heel raise ; l'abduction de hanche est affichée sans être intégrée.</div>
       <${DynamoViz} f=${g("force")||{}} cote=${d.cote} region="cheville"/></${Sec}>
-      <${Sec} k="testsCh" ...${sp}><div className="grid g3" style=${{gap:14}}>${TESTS_CH.map(([grp,list])=>html`<div key=${grp}><div className="mini-t" style=${{marginTop:0}}>${grp}</div>
+      <${Sec} k="testsCh" ...${sp}><div className="agrid">${TESTS_CH.map(([grp,list])=>html`<div key=${grp}><div className="mini-t" style=${{marginTop:0}}>${grp}</div>
         <table style=${{fontSize:12.5}}><thead><tr><th>Test</th><th>G</th><th>D</th></tr></thead><tbody>${list.map(([k,l])=>html`<tr key=${k}><td>${l}</td>${["G","D"].map(sd=>html`<td key=${sd}><${Sel} v=${g(`tests.${k}_${sd}`)} on=${v=>s(`tests.${k}_${sd}`,v)} opts=${TEST_OPTS} w=${96}/></td>`)}</tr>`)}</tbody></table></div>`)}</div>
         <div style=${{marginTop:10}}><${Txt} v=${g("tests.chNotes")} on=${v=>s("tests.chNotes",v)} ph="Notes (laxité, douleur reproduite, comparaison G/D…)"/></div></${Sec}>
-      <${Sec} k="ottawa" ...${sp}><div className="grid g2" style=${{gap:14}}>${OTT_ZONES.map(([z,zl,items])=>{const pos=ottZone(g("ottawa"),z);return html`<div key=${z}>
+      <${Sec} k="ottawa" ...${sp}><div className="agrid">${OTT_ZONES.map(([z,zl,items])=>{const pos=ottZone(g("ottawa"),z);return html`<div key=${z}>
         <div className="row" style=${{marginBottom:6}}><b style=${{fontSize:13}}>${zl}</b><div className="spacer"></div>${pos===null?html`<span className="sub" style=${{fontSize:12}}>non évaluée</span>`:pos?html`<span className="chip bad-t">Critère présent</span>`:html`<span className="chip ok-t">Aucun critère</span>`}</div>
         <table style=${{fontSize:12.5}}><tbody>${items.map(([k,l])=>html`<tr key=${k}><td>${l}</td><td style=${{width:96}}><${Sel} v=${g(`ottawa.${k}`)} on=${v=>s(`ottawa.${k}`,v)} opts=${["","Non","Oui"]} w=${86}/></td></tr>`)}</tbody></table></div>`})}</div>
         <div className="row" style=${{marginTop:10}}><span className="sub" style=${{fontWeight:700}}>Résultat</span><${Sel} v=${g("ottawa.resultat")} on=${v=>s("ottawa.resultat",v)} opts=${["","Négatif","Positif — imagerie demandée","Positif — orientation médicale","Non applicable"]} w=${270}/>
@@ -1435,7 +1440,7 @@ function BilanEditor({db,pid,bilanId,draftInit,act,back,toast,setView}){
         <div className="sub" style=${{fontSize:12,marginTop:8}}>Ratio H/Q : lésé <b>${(()=>{const c=d.cote;if(c==="B")return"—";const a=num(g(`force.ischio_${L}`)),b=num(g(`force.quad_${L}`));return a!==null&&b?(a/b).toFixed(2):"—"})()}</b> · sain <b>${(()=>{const a=num(g(`force.ischio_${Sn}`)),b=num(g(`force.quad_${Sn}`));return a!==null&&b?(a/b).toFixed(2):"—"})()}</b> · score force = moyenne des LSI quadriceps et ischios (hanche affichée, non intégrée).</div>
       <${DynamoViz} f=${g("force")||{}} cote=${d.cote}/></${Sec}>`}
 
-      <${Sec} k="testsLig" ...${sp}><div className="grid g3" style=${{gap:14}}>${TESTS_LIG.map(([grp,list])=>html`<div key=${grp}><div className="mini-t" style=${{marginTop:0}}>${grp}</div>
+      <${Sec} k="testsLig" ...${sp}><div className="agrid">${TESTS_LIG.map(([grp,list])=>html`<div key=${grp}><div className="mini-t" style=${{marginTop:0}}>${grp}</div>
         <table style=${{fontSize:12.5}}><thead><tr><th>Test</th><th>G</th><th>D</th></tr></thead><tbody>${list.map(([k,l])=>html`<tr key=${k}><td>${l}</td>${["G","D"].map(sd=>html`<td key=${sd}><${Sel} v=${g(`tests.${k}_${sd}`)} on=${v=>s(`tests.${k}_${sd}`,v)} opts=${TEST_OPTS} w=${96}/></td>`)}</tr>`)}</tbody></table></div>`)}</div>
         <div style=${{marginTop:10}}><${Txt} v=${g("tests.ligNotes")} on=${v=>s("tests.ligNotes",v)} ph="Notes (grade, arrêt, comparaison…)"/></div></${Sec}>
       <${Sec} k="testsMen" ...${sp}><table style=${{fontSize:12.5,maxWidth:420}}><thead><tr><th>Test</th><th>G</th><th>D</th></tr></thead><tbody>${TESTS_MEN.map(([k,l])=>html`<tr key=${k}><td>${l}</td>${["G","D"].map(sd=>html`<td key=${sd}><${Sel} v=${g(`tests.${k}_${sd}`)} on=${v=>s(`tests.${k}_${sd}`,v)} opts=${TEST_OPTS} w=${96}/></td>`)}</tr>`)}</tbody></table></${Sec}>
@@ -3143,7 +3148,7 @@ function programmeSheet(p,pt){
   <h2>Suivi</h2><table><tr><th>Semaine</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th><th>D</th><th>Douleur max /10</th></tr>${weeks.map(w=>`<tr><td>S${w}</td>${"<td><span class='box'></span></td>".repeat(7)}<td></td></tr>`).join("")}</table>
   <p class="mut" style="margin-top:14px">En cas de douleur supérieure à celle convenue ou de gonflement le lendemain, réduisez la charge et prévenez votre kinésithérapeute.</p>`;
 }
-function bilanSheet(db,b){
+function bilanSheetOld(db,b){
   const p=db.patients.find(x=>x.id===b.patientId);const txt=bilanReport(db,b);const lines=txt.split("\n");
   const title=lines[0],rest=lines.slice(1).join("\n");
   return `<div class="hd"><div><h1>${esc(title)}</h1><div class="mut">${esc(fmtD(b.date))}</div></div><div class="mut" style="text-align:right"><b>Bastien Perez</b><br>Masseur-kinésithérapeute</div></div><pre>${esc(rest)}</pre>`;
@@ -3685,7 +3690,7 @@ function LRRows({rows,cols,L,Sn,g,s,base,init,calc="diff",pain=null}){
         ${pain&&html`<td>${pain==="num"?html`<${NumIn} v=${g(`${base}.${k}_dlr`)} on=${v=>s(`${base}.${k}_dlr`,v)} unit="/10" w=${48}/>`:html`<${Sel} v=${g(`${base}.${k}_dlr`)} on=${v=>s(`${base}.${k}_dlr`,v)} opts=${["","Non","Oui"]} w=${80}/>`}</td>`}</tr>`})}
   </tbody></table>`;
 }
-function TestsGD({groups,g,s,notesKey}){return html`<div><div className="grid g3" style=${{gap:14}}>${groups.map(([grp,list])=>html`<div key=${grp}><div className="mini-t" style=${{marginTop:0}}>${grp}</div>
+function TestsGD({groups,g,s,notesKey}){return html`<div><div className="agrid">${groups.map(([grp,list])=>html`<div key=${grp}><div className="mini-t" style=${{marginTop:0}}>${grp}</div>
   <table style=${{fontSize:12.5}}><thead><tr><th>Test</th><th>G</th><th>D</th></tr></thead><tbody>${list.map(([k,l])=>html`<tr key=${k}><td>${l}</td>${["G","D"].map(sd=>html`<td key=${sd}><${Sel} v=${g(`tests.${k}_${sd}`)} on=${v=>s(`tests.${k}_${sd}`,v)} opts=${TEST_OPTS} w=${96}/></td>`)}</tr>`)}</tbody></table></div>`)}</div>
   <div style=${{marginTop:10}}><${Txt} v=${g(notesKey)} on=${v=>s(notesKey,v)} ph="Notes (douleur reproduite, localisation, comparaison G/D…)"/></div></div>`}
 function ChipsMulti({opts,val,on}){const cur=val||[];return html`<div className="chips">${opts.map(x=>{const sel=cur.includes(x);return html`<label key=${x} className="chip" style=${{cursor:"pointer",background:sel?"var(--accent-soft)":"",borderColor:sel?"var(--accent)":""}}><input type="checkbox" style=${{marginRight:5}} checked=${sel} onChange=${e=>on(e.target.checked?[...cur,x]:cur.filter(y=>y!==x))}/>${x}</label>`})}</div>`}
@@ -3920,6 +3925,119 @@ SECTIONS.fms="FMS — Functional Movement Screen (facultatif)";
 Object.keys(SECS_BY_REGION).forEach(r=>{const fin=SECS_BY_REGION[r]["Final"];if(fin&&!fin.includes("fms"))fin.splice(fin.indexOf("synthese"),0,"fms");const off=DEFOFF_BY_REGION[r]||(DEFOFF_BY_REGION[r]={});off["Final"]=[...(off["Final"]||[]),"fms"]});
 function fmsSentence(e){if(e.enabled?.fms===false||!e.fms)return null;const r=fmsCalc(e.fms);if(!r.n)return null;
   return `FMS (descriptif) : ${r.total===null?r.n+"/7 mouvements évalués":r.total+"/21"}${r.asym.length?" ; asymétries : "+r.asym.join(", "):""}${r.pain.length?" ; douleur au dégagement : "+r.pain.join(", ").toLowerCase():""}.`}
+
+/* ---------- V0.9.4 — Compte rendu imprimable structuré par section ---------- */
+const PRINT_CSS2=`body{font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#18181A;max-width:820px;margin:24px auto;padding:0 22px;font-size:12.5px;line-height:1.45}
+h1{font-size:20px;margin:0 0 2px;letter-spacing:.01em}h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;margin:18px 0 6px;padding:5px 8px;background:#F7F2DD;border-left:4px solid #F2C230;page-break-after:avoid}
+h3{font-size:12px;margin:10px 0 4px}.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #18181A;padding-bottom:10px;margin-bottom:10px}
+.mut{color:#777;font-size:11.5px}.idg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 16px;margin:8px 0 4px}.idg div{font-size:12px}.idg b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#888;font-weight:700}
+table{border-collapse:collapse;width:100%;margin:4px 0 6px;page-break-inside:avoid}th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#666;text-align:right;border-bottom:1.5px solid #ccc;padding:4px 6px}th:first-child{text-align:left}
+td{border-bottom:1px solid #eee;padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums}td:first-child{text-align:left}
+.ok{color:#2F7D4F;font-weight:700}.wa{color:#B26A00;font-weight:700}.ba{color:#B23A2E;font-weight:700}.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.blk{border:1px solid #e3e1da;border-radius:6px;padding:7px 10px;margin:6px 0;page-break-inside:avoid}.blk b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:2px}
+.pre{white-space:pre-wrap}.chips span{display:inline-block;border:1px solid #ddd;border-radius:10px;padding:1px 8px;margin:2px 4px 2px 0;font-size:11.5px}
+.foot{margin-top:22px;border-top:1px solid #ddd;padding-top:8px;display:flex;justify-content:space-between}.btn{font:inherit;padding:6px 12px;border:1px solid #bbb;border-radius:6px;background:#fff}
+@media print{body{margin:0;max-width:none}.noprint{display:none}}`;
+const _v=(x,d=0)=>x===null||x===undefined||x===""||isNaN(Number(x))?"—":fmtN(Number(x),d);
+const _cls=v=>v===null?"":v>=90?"ok":v>=80?"wa":"ba";
+// Lignes lésé / sain par région : [label, base, clé, unité, calcul ("diff" | "lsi" | "inv")]
+function lrSections(b){
+  const r=b.region||"genou";const fu=b.force?.unit||"N";
+  const fn=[["eqYO","Équilibre unipodal yeux ouverts","s","lsi"],["eqYF","Équilibre unipodal yeux fermés","s","lsi"]].map(([k,l,u,c])=>[l,"fonction",k,u,c]);
+  const sebt=[["sebtA","SEBT antérieure"],["sebtPM","SEBT postéro-médiale"],["sebtPL","SEBT postéro-latérale"]].map(([k,l])=>[l,"fonction",k,"cm","lsi"]);
+  const hops=HOPS.map(([k,l,u,inv])=>[l,"fonction",k,u,inv?"inv":"lsi"]);
+  if(r==="genou")return [
+    ["Mobilité",[...[["flexP","Flexion passive"],["extP","Extension passive"],["flexA","Flexion active"],["extA","Extension active"]].map(([k,l])=>[l,"mobilite",k,"°","diff"])]],
+    ["Périmétrie",[["Patella","perimetrie","patella","cm","diff"],["Patella +10 cm","perimetrie","p10","cm","diff"],["Patella +15 cm","perimetrie","p15","cm","diff"]]],
+    ["Force (dynamométrie)",[["Extension (quadriceps)","force","quad",fu,"lsi"],["Flexion (ischio-jambiers)","force","ischio",fu,"lsi"],["Adduction de hanche","force","addHanche",fu,"lsi"],["Abduction de hanche","force","abdHanche",fu,"lsi"]]],
+    ["Fonction",[...fn,...sebt,...hops]]];
+  if(r==="cheville")return [
+    ["Mobilité",[...ANK_AMPL.flatMap(([k,l])=>[[l+" passive","mobilite",k+"P","°","diff"],[l+" active","mobilite",k+"A","°","diff"]]),["WBLT (distance mur)","mobilite","ktw","cm","diff"]]],
+    ["Périmétrie",[["Figure of Eight","perimetrie","fig8","cm","diff"]]],
+    ["Force",[...DYN_GROUPS_CH.map(([k,l])=>[l,"force",k,fu,"lsi"]),["Single leg heel raise","force","heelRaise","reps","lsi"]]],
+    ["Fonction",[...fn,...sebt,...hops]]];
+  if(r==="hanche")return [
+    ["Mobilité passive",HIP_AMPL.map(([k,l])=>[l,"mobilite",k,"°","diff"])],
+    ["Force (dynamométrie)",HIP_DYN.map(([k,l])=>[l,"force",k,fu,"lsi"])],
+    ["Fonction · endurance",[...ENDUR_H.map(([k,l,u])=>[l,"fonction",k,u,"lsi"]),...fn,...sebt,...hops]]];
+  if(r==="muscle"){const M=MUSCLES[muscleOf(b)];return [
+    ["Souplesse",M.soupl.map(([k,l,u,inv])=>[l,"mobilite",k,u,inv?"inv":"lsi"])],
+    ["Force (dynamométrie)",M.dyn.map(([k,l])=>[l,"force",k,fu,"lsi"])],
+    ["Fonction · endurance",[...M.endur.map(([k,l,u])=>[l,"fonction",k,u,"lsi"]),...hops]]]}
+  return [];
+}
+function lrTable(b,init,rows){
+  const L=lesSide(b),S=otherSide(L);const bi=b.cote==="B";const e=effBilan(b);
+  const out=rows.map(([l,base,k,u,c])=>{const o=e[base]||{};const a=num(o[`${k}_${L}`]),s=num(o[`${k}_${S}`]);if(a===null&&s===null)return null;
+    let calc="—",cl="";if(a!==null&&s!==null){if(c==="diff"){const d=a-s;calc=(d>0?"+":"")+fmtN(d,1)+" "+u}else{const v=c==="inv"?(a?s/a*100:null):(s?a/s*100:null);calc=v===null?"—":fmtN(v)+" %";cl=_cls(v)}}
+    const pi=init?num((effBilan(init)[base]||{})[`${k}_${L}`]):null;const dl=base==="force"?num(o[k+"_dlr"]):null;const ds=base==="mobilite"&&o[k+"_dlr"]==="Oui";
+    return `<tr><td>${esc(l)}${dl?` <span class="ba">· douleur ${dl}/10</span>`:""}${ds?' <span class="ba">· douleur</span>':""}</td><td>${_v(a,1)} ${a!==null?esc(u):""}</td><td>${_v(s,1)} ${s!==null?esc(u):""}</td><td class="${cl}">${calc}</td>${init?`<td class="mut">${pi===null?"—":fmtN(pi,1)+" "+esc(u)}</td>`:""}</tr>`}).filter(Boolean);
+  if(!out.length)return "";
+  return `<table><tr><th>Mesure</th><th>${bi?"Droit":"Lésé ("+L+")"}</th><th>${bi?"Gauche":"Sain ("+S+")"}</th><th>${rows.some(r=>r[4]!=="diff")?"LSI / écart":"Écart lésé − sain"}</th>${init?"<th>Lésé initial</th>":""}</tr>${out.join("")}</table>`;
+}
+function radarSvg(series,size=230){
+  const c=size/2,R=size/2-34;const pt=(i,v)=>{const a=-Math.PI/2+i*2*Math.PI/AXES.length;const rr=R*(v===null?0:Math.max(0,Math.min(100,v)))/100;return [c+rr*Math.cos(a),c+rr*Math.sin(a)]};
+  let g="";[25,50,75,100].forEach(l=>{g+=`<polygon points="${AXES.map((_,i)=>pt(i,l).join(",")).join(" ")}" fill="none" stroke="#e5e2d8"/>`});
+  AXES.forEach(([k,l],i)=>{const [x,y]=pt(i,100);const [tx,ty]=pt(i,122);g+=`<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" stroke="#eee"/><text x="${tx}" y="${ty+3}" font-size="9.5" text-anchor="middle" fill="#555">${l}</text>`});
+  series.forEach(s=>{g+=`<polygon points="${AXES.map(([k],i)=>pt(i,s.values[k]).join(",")).join(" ")}" fill="${s.color}22" stroke="${s.color}" stroke-width="2"/>`});
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${g}</svg>`;
+}
+function bilanSheet(db,b){
+  const S=db.settings;const p=db.patients.find(x=>x.id===b.patientId)||{};const e=effBilan(b);const en=b.enabled||{};const on=k=>en[k]!==false;
+  const all=sortDate(byPatient(db.bilans,b.patientId).filter(x=>x.region===b.region&&x.id!==b.id),"date");const init=b.type==="Initial"?null:all.find(x=>x.type==="Initial")||null;
+  const c=computeBilan(b,S),ci=init?computeBilan(init,S):null;const v=metricVals(b,S),vi=init?metricVals(init,S):null;
+  const reg=(REGIONS[b.region]?.label||"Genou")+(b.region==="muscle"?" — "+MUSCLES[muscleOf(b)].l:"");
+  const H=[];
+  H.push(`<style>${PRINT_CSS2}</style>`);
+  H.push(`<div class="noprint mut" style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;align-items:center">iPad : Partager → Imprimer, ou<button class="btn" onclick="window.print()">Imprimer / PDF</button></div>`);
+  H.push(`<div class="hd"><div><h1>Bilan ${esc(b.type.toLowerCase())} — ${esc(reg)}</h1><div class="mut">${esc(fmtD(b.date))} · côté ${esc(sideLabel(b.cote).toLowerCase())}${init?` · comparé au bilan initial du ${esc(fmtD(init.date))}`:""}</div></div><div class="mut" style="text-align:right"><b style="color:#18181A">Bastien Perez</b><br>Masseur-kinésithérapeute</div></div>`);
+  const surg=p.dateChirurgie?daysBetween(parseD(p.dateChirurgie),parseD(b.date)):null;const inj=p.dateBlessure?daysBetween(parseD(p.dateBlessure),parseD(b.date)):null;
+  H.push(`<div class="idg"><div><b>Patient</b>${esc(fullName(p))}${age(p.dob)!==null?`, ${age(p.dob)} ans`:""}</div><div><b>Sport</b>${esc([p.sport,p.niveau,p.poste].filter(x=>x&&x!=="—").join(" · ")||"—")}</div><div><b>Diagnostic</b>${esc(p.diagnostic||"—")}</div>
+    <div><b>Blessure</b>${p.dateBlessure?esc(fmtD(p.dateBlessure))+(inj!==null&&inj>=0?` (J+${inj})`:""):"—"}</div><div><b>Chirurgie</b>${p.dateChirurgie?esc(fmtD(p.dateChirurgie))+(surg!==null&&surg>=0?` (J+${surg})`:""):"—"}</div><div><b>Objectif · échéance</b>${esc(p.objectifSportif||"—")}${p.pourQuand?" · "+esc(p.pourQuand):""}</div></div>`);
+  // Douleur / fonction perçue
+  const dl=e.douleur||{};const prow=(l,k)=>`<tr><td>${l}</td><td>${_v(dl[k])}/10</td>${init?`<td class="mut">${_v(init.douleur?.[k])}/10</td>`:""}</tr>`;
+  const psN=(init||b).psfs||{};const psfsRows=[1,2,3].filter(i=>num(e.psfs?.["s"+i])!==null).map(i=>`<tr><td>PSFS · ${esc(psN["a"+i]||"activité "+i)}</td><td>${_v(e.psfs["s"+i])}/10</td>${init?`<td class="mut">${_v(init.psfs?.["s"+i])}/10</td>`:""}</tr>`).join("");
+  if(on("douleur")||on("psfs")||on("sane"))H.push(`<h2>Douleur et fonction perçue</h2><div class="two"><table><tr><th>Douleur</th><th>Actuel</th>${init?"<th>Initial</th>":""}</tr>${prow("EVA repos","evaRepos")}${prow("EVA activité","evaActivite")}${prow("EVA nuit","evaNuit")}</table>
+    <table><tr><th>Auto-évaluation</th><th>Actuel</th>${init?"<th>Initial</th>":""}</tr>${psfsRows}<tr><td>SANE</td><td>${_v(e.questionnaires?.sane)} %</td>${init?`<td class="mut">${_v(init.questionnaires?.sane)} %</td>`:""}</tr></table></div>
+    ${[dl.irritabilite&&"irritabilité "+dl.irritabilite.toLowerCase(),dl.nature&&"douleur "+dl.nature.toLowerCase(),dl.type&&dl.type.toLowerCase()].filter(Boolean).length?`<div class="mut">${esc([dl.irritabilite&&"Irritabilité "+dl.irritabilite.toLowerCase(),dl.nature&&"nature "+dl.nature.toLowerCase(),dl.type&&"type "+dl.type.toLowerCase()].filter(Boolean).join(" · "))}</div>`:""}`);
+  // Classification / lésion
+  if(b.region==="hanche"&&on("classH")&&(e.classif?.entites?.length||e.classif?.zurich))H.push(`<h2>Classification</h2><div class="chips">${(e.classif.entites||[]).map(x=>`<span>${esc(x)}</span>`).join("")}</div>${e.classif.zurich?`<div>Zurich 2018 : ${esc(e.classif.zurich)}</div>`:""}${e.classif.imagerie?`<div class="mut">Imagerie : ${esc(e.classif.imagerie)}</div>`:""}`);
+  if(b.region==="muscle"){const cl=e.classif||{},pl=e.palp||{};H.push(`<h2>Lésion</h2><div class="idg"><div><b>Muscle</b>${esc(MUSCLES[muscleOf(b)].l)}${cl.portion?" · "+esc(cl.portion):""}</div><div><b>Localisation</b>${esc(cl.localisation||"—")}</div><div><b>BAMIC</b>${esc(cl.bamic||"—")}</div><div><b>Mécanisme</b>${esc(cl.mecanisme||"—")}</div><div><b>Palpation</b>${pl.dlr?(pl.dlr==="Oui"?"douloureuse":"indolore"):"—"}${num(pl.eva)!==null?` (${pl.eva}/10)`:""}</div><div><b>Zone douloureuse</b>${num(pl.long)!==null?pl.long+" cm":"—"}${num(pl.dist)!==null?` · à ${pl.dist} cm du repère`:""}</div></div>`)}
+  // Inspection (genou)
+  if(b.region==="genou"&&on("inspection")&&(e.inspection?.epanchement||e.inspection?.inspection))H.push(`<h2>Inspection</h2><div>${e.inspection.epanchement?`Épanchement (stroke test) : <b>${esc(e.inspection.epanchement)}</b>`:""}${e.inspection.chocRotulien?` · choc rotulien ${esc(e.inspection.chocRotulien.toLowerCase())}`:""}</div>${e.inspection.inspection?`<div class="mut">${esc(e.inspection.inspection)}</div>`:""}`);
+  // Tableaux lésé / sain
+  lrSections(b).forEach(([t,rows])=>{const tb=lrTable(b,init,rows);if(tb)H.push(`<h2>${esc(t)}</h2>${tb}`)});
+  if(b.region==="genou"&&c.detail.hq!=null)H.push(`<div class="mut">Ratio ischio / quadriceps lésé : <b>${fmtN(c.detail.hq,2)}</b>${dynRatio(e.force,"ischio","quad",otherSide(lesSide(b)))!==null?` · sain ${fmtN(dynRatio(e.force,"ischio","quad",otherSide(lesSide(b))),2)}`:""}</div>`);
+  if(c.detail.aaLes!=null)H.push(`<div class="mut">Ratio adducteurs / abducteurs lésé : <b>${fmtN(c.detail.aaLes,2)}</b> (repère > 0,90)</div>`);
+  if(b.region==="hanche"&&c.detail.squeeze!=null)H.push(`<div class="mut">Squeeze test long levier : <b>${fmtN(c.detail.squeeze)} ${esc(e.force?.unit||"N")}</b>${c.detail.squeezeDlr!=null?`, douleur ${fmtN(c.detail.squeezeDlr)}/10`:""}</div>`);
+  if(c.detail.lsiSebt!=null)H.push(`<div class="mut">SEBT composite : LSI <b class="${_cls(c.detail.lsiSebt)}">${fmtN(c.detail.lsiSebt)} %</b></div>`);
+  if(num(e.fonction?.tTest)!==null)H.push(`<div class="mut">T-Agility Test : <b>${fmtN(num(e.fonction.tTest),2)} s</b>${tRating(num(e.fonction.tTest),p.sexe)?` (norme ${tRating(num(e.fonction.tTest),p.sexe).toLowerCase()})`:""}</div>`);
+  // Terrain (muscle)
+  if(b.region==="muscle"&&on("terrain")){const t=e.terrain||{};const it=TERRAIN_ITEMS.filter(([k])=>t[k]);if(t.stade||num(t.vmax)!==null||it.length)H.push(`<h2>Course · terrain</h2><table><tr><th>Mesure</th><th>Valeur</th></tr>${t.stade?`<tr><td>Stade de course</td><td>${esc(t.stade)}</td></tr>`:""}${num(t.sprint10)!==null?`<tr><td>Sprint 10 m</td><td>${_v(t.sprint10,2)} s</td></tr>`:""}${num(t.sprint30)!==null?`<tr><td>Sprint 30 m</td><td>${_v(t.sprint30,2)} s</td></tr>`:""}${c.detail.vmaxPct!=null?`<tr><td>Vmax</td><td>${_v(t.vmax,1)} km/h · <b class="${c.detail.vmaxPct>=95?"ok":"wa"}">${fmtN(c.detail.vmaxPct)} %</b> pré-blessure</td></tr>`:""}${it.map(([k,l])=>`<tr><td>${esc(l)}</td><td>${esc(t[k])}</td></tr>`).join("")}${num(t.confiance)!==null?`<tr><td>Confiance</td><td>${t.confiance}/10</td></tr>`:""}</table>`)}
+  // Tests fonctionnels qualitatifs
+  const fo=e.fonctionnel||{};const fq=Object.keys(FONCT_LABEL).filter(k=>fo[k]);if(on("fonctionnels")&&fq.length)H.push(`<h2>Tests fonctionnels</h2><table><tr><th>Test</th><th>Qualité</th><th>Commentaire</th></tr>${fq.map(k=>`<tr><td>${esc(FONCT_LABEL[k])}</td><td>${esc(fo[k])}</td><td>${esc(fo[k+"Com"]||"")}</td></tr>`).join("")}</table>`);
+  // Tests spécifiques
+  const pos=positiveTests(b);if(pos.length)H.push(`<h2>Tests spécifiques positifs ou douteux</h2><div class="chips">${pos.map(x=>`<span>${esc(x)}</span>`).join("")}</div>`);
+  if(b.region==="cheville"&&on("ottawa")&&b.ottawa?.resultat)H.push(`<div class="mut">Critères d'Ottawa : <b>${esc(b.ottawa.resultat)}</b></div>`);
+  // Questionnaires
+  const qs=metricsOf(b.region,b.muscle).filter(m=>m[2]==="/100"||m[2]==="%"||m[2]==="/30").filter(m=>["Questionnaires"].some(g=>metricGroups(b.region,b.muscle).find(x=>x[0]===g)?.[1].includes(m))&&!String(m[0]).startsWith("sc")&&v[m[0]]!==null);
+  if(on("questionnaires")&&qs.length)H.push(`<h2>Questionnaires</h2><table><tr><th>Questionnaire</th><th>Score</th>${vi?"<th>Initial</th>":""}</tr>${qs.map(([k,l,u])=>`<tr><td>${esc(l)}</td><td><b>${fmtN(v[k],1)}</b> ${esc(u)}</td>${vi?`<td class="mut">${vi[k]===null?"—":fmtN(vi[k],1)+" "+esc(u)}</td>`:""}</tr>`).join("")}</table>`);
+  const fs=fmtsSafe(e);if(fs)H.push(`<h2>FMS (descriptif)</h2><div>${esc(fs)}</div>`);
+  // Scores synthétiques + Kiviat
+  H.push(`<h2>Scores synthétiques (indicateurs internes /100)</h2><div class="two" style="align-items:center"><div>${radarSvg([...(ci?[{color:"#9A988F",values:ci}]:[]),{color:"#E0AE14",values:c}])}<div class="mut">${ci?"Gris : initial · ":""}Jaune : ce bilan</div></div>
+    <table><tr><th>Domaine</th><th>Actuel</th>${ci?"<th>Initial</th>":""}</tr>${AXES.map(([k,l])=>`<tr><td>${l}</td><td>${c[k]===null?"n.é.":r0(c[k])}</td>${ci?`<td class="mut">${ci[k]===null?"n.é.":r0(ci[k])}</td>`:""}</tr>`).join("")}</table></div>
+    <div class="mut">Indicateurs de visualisation calculés par le logiciel, non validés scientifiquement.</div>`);
+  // Décisions
+  if(b.type!=="Initial"&&b.type!=="Final"&&((b.decision?.choix||[]).length||b.decision?.notes))H.push(`<h2>Décision</h2><div class="chips">${(b.decision.choix||[]).map(x=>`<span>${esc(x)}</span>`).join("")}</div>${b.decision.notes?`<div class="pre">${esc(b.decision.notes)}</div>`:""}`);
+  if(b.type==="Final"&&on("rts")){const ok=Object.keys(b.rts||{}).filter(k=>k.startsWith("v_")&&b.rts[k]).length;H.push(`<h2>Retour au sport</h2><div>Critères validés par le praticien : <b>${ok}</b>${b.rts?.decision?` · décision : <b>${esc(b.rts.decision)}</b>`:""}</div>${b.rts?.notes?`<div class="pre">${esc(b.rts.notes)}</div>`:""}`)}
+  // Synthèse
+  const sy=typeof b.synthese==="string"?{synthese:b.synthese}:(b.synthese||{});
+  const blocks=[["deficits","Déficits principaux"],["limitants","Facteurs limitants"],["objectifs","Objectifs prioritaires (SMART)"],["priorites","Priorités thérapeutiques"],["synthese","Synthèse clinique"]].filter(([k])=>sy[k]);
+  if(blocks.length)H.push(`<h2>Synthèse</h2>${blocks.map(([k,l])=>`<div class="blk"><b>${l}</b><div class="pre">${esc(sy[k])}</div></div>`).join("")}`);
+  H.push(`<div class="foot mut"><span>${esc(b.id||"")} · BP PhysioSport Suite</span><span>Bastien Perez — Masseur-kinésithérapeute</span></div>`);
+  return H.join("\n");
+}
+function fmtsSafe(e){try{return typeof fmsSentence==="function"?fmsSentence(e):null}catch(x){return null}}
 
 /* =========================================================
    MODULES À VENIR (lecture des données existantes)
