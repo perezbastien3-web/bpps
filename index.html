@@ -275,6 +275,11 @@ td.mono{white-space:nowrap}
 .agrid>div{min-width:0;overflow-x:auto}
 .card table select{max-width:100%}
 @media (max-width:700px){.agrid{grid-template-columns:1fr}}
+
+.pl-t{width:100%;border-collapse:collapse}.pl-t td{border:1px solid var(--line);padding:0;vertical-align:middle}.pl-t td.pl-l{background:var(--surface-2);font-size:12px;font-weight:700;padding:2px 8px;width:96px;white-space:nowrap}
+.plc:hover{border-color:var(--line)!important}.plc:focus{outline:none;border-color:var(--accent)!important;background:#fff!important}
+
+.pl-menu{position:relative;display:inline-block}.pl-menu>summary{list-style:none;cursor:pointer}.pl-menu>summary::-webkit-details-marker{display:none}.pl-pop{position:absolute;right:0;top:110%;z-index:20;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.12);padding:6px;display:flex;flex-direction:column;align-items:stretch;min-width:240px}.pl-pop .btn{justify-content:flex-start;text-align:left}
 </style>
 </head>
 <body>
@@ -287,7 +292,7 @@ const html=htm.bind(React.createElement);
 /* =========================================================
    CONSTANTES
    ========================================================= */
-const APP_VERSION="0.9.4";
+const APP_VERSION="0.9.7";
 const SECURE=!!window.BPPS_SECURE;
 const STORE_KEY="bpps_store_v1";
 const STATUTS_PATIENT=["Actif","En pause","Terminé","Archivé"];
@@ -548,7 +553,7 @@ function syncPhaseAlert(d,ph,removed){
 function migrate(d){
   if(!d||!Array.isArray(d.patients))return null;
   const base=seed();
-  ["bilans","deficits","phases","seances","rdv","alertes","programmes","documents","audit"].forEach(k=>{if(!Array.isArray(d[k]))d[k]=[]});
+  ["bilans","deficits","phases","seances","rdv","alertes","programmes","documents","audit","plans"].forEach(k=>{if(!Array.isArray(d[k]))d[k]=[]});
   d.settings={...JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),...(d.settings||{})};
   Object.keys(DEFAULT_SETTINGS).forEach(k=>{if(typeof DEFAULT_SETTINGS[k]==="object")d.settings[k]={...DEFAULT_SETTINGS[k],...(d.settings[k]||{})}});
   d.counters={...base.counters,...(d.counters||{})};
@@ -1845,8 +1850,8 @@ function Gantt({phases}){
 }
 function PlanifView(props){
   const [tab,setTab]=useState("cal");
-  return html`<div><div className="seg" style=${{marginBottom:14}}><button className=${tab==="cal"?"on":""} onClick=${()=>setTab("cal")}>Calendrier</button><button className=${tab==="ph"?"on":""} onClick=${()=>setTab("ph")}>Phases & cycles</button></div>
-    ${tab==="cal"?html`<${CalendarView} ...${props}/>`:html`<${PhasesView} ...${props}/>`}</div>`;
+  return html`<div><div className="seg" style=${{marginBottom:14}}><button className=${tab==="cal"?"on":""} onClick=${()=>setTab("cal")}>Calendrier</button><button className=${tab==="ph"?"on":""} onClick=${()=>setTab("ph")}>Phases & cycles</button><button className=${tab==="glob"?"on":""} onClick=${()=>setTab("glob")}>Vue globale</button></div>
+    ${tab==="cal"?html`<${CalendarView} ...${props}/>`:tab==="glob"?html`<${GlobalPlanView} key=${props.pid} ...${props}/>`:html`<${PhasesView} ...${props}/>`}</div>`;
 }
 function PhasesView({db,pid,act,toast}){
   const [form,setForm]=useState(null);
@@ -1866,7 +1871,7 @@ function PhasesView({db,pid,act,toast}){
     <div className="grid g2">
       ${phases.map(p=>{const s=parseD(p.debut),e=parseD(p.fin),t=TODAY();const pc=s&&e&&e>s?Math.max(0,Math.min(100,(t-s)/(e-s)*100)):null;
         return html`<div key=${p.id} className=${"card"+(p.statut==="En cours"?" accent-bar":"")} style=${{cursor:"pointer"}} onClick=${()=>setForm(p)}>
-          <div className="card-h"><span className="card-t">${p.phase}${p.cycle?" · "+p.cycle:""}</span><span className="src"><span className=${"pill "+phStatCls(p.statut)}>${p.statut}</span></span></div>
+          <div className="card-h"><span className="card-t">${p.phase}${p.cycle?" · "+p.cycle:""}</span>${p.planRef&&html`<span className="chip" style=${{marginLeft:8,fontSize:10.5}} title="Créé par la vue globale : modifiez-le depuis la vue globale, sinon vos changements seront remplacés à la prochaine application">Vue globale</span>`}<span className="src"><span className=${"pill "+phStatCls(p.statut)}>${p.statut}</span></span></div>
           <dl className="kv"><dt>Dates</dt><dd>${fmtD(p.debut)} → ${fmtD(p.fin)}</dd><dt>Objectif</dt><dd>${p.objectif||"—"}</dd>${p.objSec&&html`<dt>Secondaires</dt><dd style=${{fontWeight:500}}>${p.objSec}</dd>`}<dt>Fréquence</dt><dd>${p.frequence||"—"}</dd></dl>
           <div className="mini-t">Déficits ciblés</div>
           ${(p.deficits||[]).length?html`<div style=${{display:"flex",flexDirection:"column",gap:4}}>${p.deficits.map(id=>{const x=defName(id);return html`<div key=${id} className="row" style=${{gap:6,fontSize:13}}><span className=${"pill "+(x?defStatCls(x.statut):"p-basse")}>${x?x.statut:"supprimé"}</span><b>${x?x.description:id}</b>${(p.defObjectifs||{})[id]&&html`<span className="sub">→ ${p.defObjectifs[id]}</span>`}</div>`})}</div>`:html`<div className="empty">Aucun.</div>`}
@@ -2693,7 +2698,7 @@ const AUTO_KEEP=14;
 const fsSupported=()=>typeof window.showDirectoryPicker==="function"||!!window.__bppsTestDir;
 async function dirPerm(h,ask){if(!h)return "none";if(!h.queryPermission)return "granted";const o={mode:"readwrite"};let p=await h.queryPermission(o);if(p!=="granted"&&ask)p=await h.requestPermission(o);return p}
 // ---------- Synchronisation par fichier : horodatage, suppressions, fusion ----------
-const SYNC_COLLS=["patients","bilans","deficits","phases","seances","rdv","alertes","programmes","documents","exercices","chaines","seanceTemplates"];
+const SYNC_COLLS=["patients","bilans","deficits","phases","seances","rdv","alertes","programmes","documents","exercices","chaines","seanceTemplates","plans"];
 function deviceId(){let v=vStore.pref("bpps_device","");if(!v){v=Math.random().toString(36).slice(2,8);vStore.setPref("bpps_device",v)}return v}
 // Marque chaque enregistrement créé/modifié (_c création, _m modification) et note les suppressions (meta._del).
 function stampDb(prev,d){
@@ -4040,6 +4045,420 @@ function bilanSheet(db,b){
 function fmtsSafe(e){try{return typeof fmsSentence==="function"?fmsSentence(e):null}catch(x){return null}}
 
 /* =========================================================
+   V0.9.6 — PLANIFICATION : VUE GLOBALE → alimente Phases & cycles et le Calendrier
+   ========================================================= */
+const PL_PARAMS=[["exercices","Exercices"],["series","Séries"],["reps","Reps"],["tempo","Tempo"],["intensite","Intensité"],["recup","Récup"],["frequence","Fréquence"],["amplitude","Amplitude"]];
+const PL_COLORS=["#F7E35A","#F2A23A","#E4473A","#7FB77E","#5B8FD6","#9B7BD1"];
+const PL_GROUPS=["IJ","Q","Chaîne lat","Mobilité"];
+const PL_DAYS=["L","M","M","J","V","S","D"];
+const PL_DEFDAYS={1:[2],2:[1,4],3:[1,3,5],4:[1,2,4,5],5:[1,2,3,4,5],6:[1,2,3,4,5,6]};
+const isoOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const addD=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const wdOf=d=>((d.getDay()+6)%7)+1;
+const nextMonday=()=>{const t=TODAY();const x=new Date(t);const w=wdOf(x);x.setDate(x.getDate()+(w===1?0:8-w));return isoOf(x)};
+const plParam=(o={})=>Object.fromEntries(PL_PARAMS.map(([k])=>[k,o[k]||""]));
+const plSeance=()=>({blocs:[],note:""});
+const plCycle=(nS=3)=>({semaines:2,labels:["",""],params:[plParam()],seances:Array.from({length:nS},plSeance),groupes:PL_GROUPS.map(l=>({label:l,exos:""}))});
+const plPhase=(i,nC=3,nS=3)=>({nom:"Phase "+(i+1),couleur:PL_COLORS[i%PL_COLORS.length],objectifs:"",cycles:Array.from({length:nC},()=>plCycle(nS)),criteres:""});
+function plBlank(pid,nP=3,nC=3,nS=3){return {patientId:pid,nom:"Plan de traitement",debut:nextMonday(),jours:PL_DEFDAYS[nS],nC,nS,phases:Array.from({length:nP},(_,i)=>plPhase(i,nC,nS))}}
+// Convertit un texte de séance (une ligne par bloc) en blocs reliés aux groupes du cycle
+function plParseSeance(txt,c){
+  const blocs=[],rest=[];const G=c.groupes.map(g=>g.label);const two=c.params.length>1;
+  const find=re=>G.find(l=>re.test(normName(l)));
+  String(txt||"").split("\n").map(x=>x.trim()).filter(Boolean).forEach(line=>{const n=normName(line);const col=/force/.test(n)&&two?1:0;let hit=false;
+    const add=l=>{if(l&&!blocs.some(b=>b.g===l)){blocs.push({g:l,col});hit=true}};
+    if(/mobil/.test(n))add(find(/mobil/));
+    if(/stabil/.test(n))add(find(/lat|stabil/));
+    if(/\bij\b|ischio/.test(n))add(find(/^ij$|ischio/));
+    if(/\bq\b|quadri/.test(n))add(find(/^q$|quadri/));
+    G.forEach(l=>{if(n.includes(normName(l))&&normName(l).length>2)add(l)});
+    if(!hit)rest.push(line)});
+  return {blocs,note:rest.join("\n")};
+}
+function plNormalize(p){
+  const x=JSON.parse(JSON.stringify(p));x.debut=x.debut||nextMonday();x.nS=x.nS||3;x.nC=x.nC||3;x.jours=Array.isArray(x.jours)&&x.jours.length?x.jours:PL_DEFDAYS[x.nS]||[1,3,5];
+  x.phases.forEach(ph=>ph.cycles.forEach(c=>{c.semaines=c.semaines||2;c.labels=c.labels||["",""];c.seances=(c.seances||[]).map(s=>typeof s==="string"?plParseSeance(s,c):{blocs:s.blocs||[],note:s.note||""})}));
+  return x;
+}
+function plModeleGenou(pid){
+  const H1=plParam({series:"> 10 → 20",reps:"12-15 / 15-20",tempo:"4010 / 3010",intensite:"RPE 8",recup:"1'30",frequence:"1 à 4",amplitude:"Dépend de l'exo"});
+  const H2=plParam({exercices:"Les mêmes + poly articulaire",series:"Pareil ou +",reps:"10-12 / 12-15",tempo:"3010 / 2010",intensite:"RPE 8",recup:"1'45",frequence:"1 à 4",amplitude:"Dépend de l'exo"});
+  const H3=plParam({exercices:"Les mêmes + poly articulaire",series:"Pareil ou +",reps:"8-10 / 10-12",tempo:"2010",intensite:"RPE 8",recup:"1'45",frequence:"1 à 4",amplitude:"Dépend de l'exo"});
+  const F=plParam({series:"3",reps:"6-8 / 8-10",intensite:"RIR 1-3 / RPE 8-9",recup:"3'",frequence:"1 à 2",amplitude:"Spécifique"});
+  const PT=plParam({exercices:"Poussée et tirage (H et V)",series:"3",reps:"6-8 / 8-10",intensite:"RIR 1-3 / RPE 8-9",recup:"3'",frequence:"1 à 2",amplitude:"Spécifique"});
+  const G1=[{label:"IJ",exos:"Glute bridge, Chinese plank"},{label:"Q",exos:"Goblet box squat, Leg extension"},{label:"Chaîne lat",exos:"Side plank, Monster walk"},{label:"Mobilité",exos:"Passif + exos"}];
+  const G2=[{label:"IJ",exos:"Glute bridge, Chinese plank, Romanian deadlift"},{label:"Q",exos:"Goblet box squat, Leg extension, Box step-up"},{label:"Chaîne lat",exos:"Side plank, Monster walk"},{label:"Mobilité",exos:"Passif + exos"}];
+  const sH=["Mobilité\nHypertrophie Q et IJ\nStabilité","Mobilité\nHypertrophie Q et IJ","Mobilité\nHypertrophie Q et IJ\nStabilité"];
+  const sF2=["Mobilité\nHypertrophie Q et IJ\nStabilité","Mobilité\nForce Q et IJ","Mobilité\nHypertrophie Q et IJ\nStabilité"];
+  const sF13=["Mobilité\nForce Q et IJ\nStabilité","Mobilité\nHypertrophie Q et IJ","Mobilité\nForce Q et IJ\nStabilité"];
+  const cy=(params,labels,seances,groupes)=>{const c={semaines:2,labels,params:params.map(p=>({...p})),groupes:groupes.map(g=>({...g}))};c.seances=seances.map(s=>plParseSeance(s,c));return c};
+  return {patientId:pid,nom:"Plan genou (modèle Excel)",debut:nextMonday(),jours:[1,3,5],nC:3,nS:3,phases:[
+    {nom:"Phase 1",couleur:PL_COLORS[0],objectifs:"Mobilité de cheville\nHypertrophie\nFlexion genou\nStabilité",criteres:"",
+     cycles:[cy([H1],["Hypertrophie",""],sH,G1),cy([H2],["Hypertrophie",""],sH,G2),cy([H3,F],["Hypertrophie","Force"],sF2,G2)]},
+    {nom:"Phase 2",couleur:PL_COLORS[1],objectifs:"Force\nMobilité cheville\nHypertrophie\nMobilité genou",criteres:"",
+     cycles:[cy([H3,F],["Hypertrophie","Force"],sF13,G1),cy([H2],["Hypertrophie",""],sH,G2),cy([PT],["Force",""],sH,G2)]},
+    {nom:"Phase 3",couleur:PL_COLORS[2],objectifs:"Fonction\nForce",criteres:"",
+     cycles:[cy([H1],["Hypertrophie",""],sH,G2),cy([H2],["Hypertrophie",""],sH,G2),cy([PT],["Force",""],sH,G2)]}]};
+}
+function plResize(p,nP,nC,nS){
+  const phases=Array.from({length:nP},(_,i)=>{const ph=p.phases[i]?JSON.parse(JSON.stringify(p.phases[i])):plPhase(i,nC,nS);
+    ph.cycles=Array.from({length:nC},(_,j)=>{const c=ph.cycles[j]||plCycle(nS);c.seances=Array.from({length:nS},(_,k)=>c.seances?.[k]||plSeance());return c});return ph});
+  const jours=(p.jours||[]).length===p.nS&&nS!==p.nS?PL_DEFDAYS[nS]:p.jours;
+  return {...p,nC,nS,jours,phases};
+}
+// Calendrier du plan : dates de chaque cycle et de chaque séance
+function plSchedule(p){
+  const out=[];let cur=parseD(p.debut)||TODAY();const days=[...(p.jours||[1,3,5])].sort((a,b)=>a-b);
+  p.phases.forEach((ph,i)=>ph.cycles.forEach((c,j)=>{const w=Math.max(1,+c.semaines||1);const start=new Date(cur);const end=addD(start,w*7-1);const ses=[];
+    for(let k=0;k<w;k++){const ws=addD(start,7*k);c.seances.forEach((s,si)=>{const wd=days[si%days.length];const off=(wd-wdOf(ws)+7)%7;const extra=si>=days.length?7*Math.floor(si/days.length):0;let dt=addD(ws,off+extra);if(dt>end)dt=end;ses.push({w:k,k:si,date:isoOf(dt)})})}
+    out.push({i,j,start:isoOf(start),end:isoOf(end),seances:ses});cur=addD(end,1)}));
+  return out;
+}
+function plSeanceExos(db,c,s){
+  const rows=[];(s.blocs||[]).forEach(b=>{const g=c.groupes.find(x=>x.label===b.g);if(!g)return;const pp=c.params[b.col]||c.params[0]||plParam();const warm=/mobil|echauf|warm/.test(normName(g.label));
+    String(g.exos||"").split(",").map(x=>x.trim()).filter(Boolean).forEach(nm=>{const m=findExByName(db,nm);
+      rows.push({bloc:warm?"warm":"skill",nom:m?m.nom:nm,exId:m?m.id:null,series:pp.series||"",reps:pp.reps||"",tempo:pp.tempo||"",intensite:pp.intensite||"",recup:pp.recup||"",charge:"",notes:[pp.amplitude&&!/depend/.test(normName(pp.amplitude))?"Amplitude : "+pp.amplitude:"",c.labels?.[b.col]&&c.params.length>1?c.labels[b.col]:""].filter(Boolean).join(" · ")})})});
+  return rows;
+}
+const plSeanceTitle=(c,s)=>(s.note||"").split("\n")[0]||(s.blocs||[]).map(b=>b.g+(c.params.length>1&&c.labels?.[b.col]?" ("+c.labels[b.col].toLowerCase()+")":"")).join(" + ")||"Séance";
+// Applique le plan aux phases et aux séances planifiées (sans toucher aux séances réalisées ni aux éléments créés à la main)
+function applyPlanToDb(d,pl,dry,log){const LOG=log||((pid,msg)=>({at:nowISO(),pid,msg}));
+  const st={phNew:0,phUpd:0,phDel:0,seNew:0,seUpd:0,seDel:0,seKeep:0,first:null,last:null};
+  const sch=plSchedule(pl);const today=todayISO();const phases=[...d.phases];const seances=[...d.seances];let cnt={...d.counters};const touched=[];const removed=[];
+  const keepPh=new Set(),keepSe=new Set();
+  sch.forEach(({i,j,start,end,seances:ses})=>{const ph=pl.phases[i],c=ph.cycles[j];const ref=`${pl.id}:${i}:${j}`;keepPh.add(ref);
+    st.first=st.first&&st.first<start?st.first:start;st.last=st.last&&st.last>end?st.last:end;
+    const ob=String(ph.objectifs||"").split("\n").map(x=>x.trim()).filter(Boolean);
+    const pp=c.params[0]||{};const notes=PL_PARAMS.filter(([k])=>pp[k]).map(([k,l])=>`${l} : ${pp[k]}`).join(" · ");
+    const ex=phases.findIndex(x=>x.planRef===ref);
+    const statut=today>end?"Terminée":today>=start?"En cours":"À venir";
+    const base={patientId:pl.patientId,phase:ph.nom,cycle:`Cycle ${j+1}`,debut:start,fin:end,objectif:ob[0]||"",objSec:ob.slice(1).join(" ; "),criteres:j===ph.cycles.length-1?(ph.criteres||""):"",frequence:`${c.seances.length} / sem`,notes,planRef:ref};
+    if(ex>=0){const o=phases[ex];const rec={...o,...base,statut:o.statut==="Suspendue"?o.statut:statut,updatedAt:nowISO()};if(JSON.stringify({...o,updatedAt:0,_m:0})!==JSON.stringify({...rec,updatedAt:0,_m:0})){phases[ex]=rec;touched.push(rec);st.phUpd++}}
+    else{cnt.PH=(cnt.PH||0)+1;const rec={...base,id:"PH-"+pad(cnt.PH),statut,deficits:[],defObjectifs:{},updatedAt:nowISO()};phases.push(rec);touched.push(rec);st.phNew++}
+    ses.forEach(({w,k,date})=>{const sref=`${ref}:${w}:${k}`;keepSe.add(sref);const s=c.seances[k];const exos=plSeanceExos(d,c,s);
+      const sb={patientId:pl.patientId,date,type:"Kiné",phase:ph.nom,cycle:`Cycle ${j+1}`,objectif:plSeanceTitle(c,s),exercices:exos,planRef:sref,statut:"Planifiée"};
+      const xi=seances.findIndex(x=>x.planRef===sref);
+      if(xi>=0){const o=seances[xi];if(o.statut!=="Planifiée"){st.seKeep++;return}const rec={...o,...sb};if(JSON.stringify({...o,updatedAt:0,_m:0})!==JSON.stringify({...rec,updatedAt:0,_m:0})){seances[xi]={...rec,updatedAt:nowISO()};st.seUpd++}}
+      else{cnt.S=(cnt.S||0)+1;seances.push({...sb,id:"S-"+pad(cnt.S),duree:"",rpe:"",douleurAvant:"",douleurApres:"",reponse:"",notes:"",updatedAt:nowISO()});st.seNew++}})});
+  const pre=pl.id+":";
+  const ph2=phases.filter(x=>{if(x.planRef&&x.planRef.startsWith(pre)&&!keepPh.has(x.planRef)){removed.push(x);st.phDel++;return false}return true});
+  const se2=seances.filter(x=>{if(x.planRef&&x.planRef.startsWith(pre)&&!keepSe.has(x.planRef)&&x.statut==="Planifiée"){st.seDel++;return false}return true});
+  if(dry)return st;
+  let nd={...d,counters:cnt,phases:ph2,seances:se2,audit:[...d.audit,LOG(pl.patientId,`Vue globale ${pl.id} appliquée : ${st.phNew+st.phUpd} cycle(s), ${st.seNew+st.seUpd} séance(s) planifiée(s)`)],
+    plans:(d.plans||[]).map(x=>x.id===pl.id?{...x,appliedAt:nowISO()}:x)};
+  touched.forEach(rec=>{nd=syncPhaseAlert(nd,rec)});removed.forEach(rec=>{nd=syncPhaseAlert(nd,rec,true)});
+  return nd;
+}
+
+/* ---------- composants ---------- */
+const plTA={width:"100%",border:"1px solid transparent",background:"transparent",font:"inherit",fontSize:12.5,resize:"none",padding:"3px 5px",borderRadius:6,lineHeight:1.35};
+function PlCell({v,on,ph,rows=1,bold,center,cpl=24}){const r=Math.max(rows,String(v||"").split("\n").reduce((t,l)=>t+Math.max(1,Math.ceil(l.length/cpl)),0));
+  return html`<textarea rows=${r} value=${v||""} placeholder=${ph||""} onChange=${e=>on(e.target.value)} className="plc" style=${{...plTA,fontWeight:bold?700:500,textAlign:center?"center":"left"}}/>`}
+function ExoChips({db,value,on}){
+  const [t,setT]=useState("");const list=String(value||"").split(",").map(x=>x.trim()).filter(Boolean);
+  const set=l=>on(l.join(", "));const add=()=>{const v=t.trim().replace(/,$/,"");if(v){set([...list,v]);setT("")}};
+  return html`<div style=${{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center",padding:"3px 4px"}}>
+    ${list.map((nm,i)=>{const m=findExByName(db,nm);const pos=m?exPositions(db,m.id)[0]:null;const nx=pos?.next?findEx(db,pos.next):null;
+      return html`<span key=${i} className="chip" style=${{fontSize:11.5,padding:"1px 4px 1px 8px",gap:2,background:m?"":"var(--surface-2)"}} title=${pos?`${pos.chaine.label} · niveau ${pos.niveau}/${pos.chaine.items.length}`:"Hors bibliothèque"}>${nm}
+        ${nx&&html`<button className="btn sm ghost" style=${{padding:"0 3px",fontSize:11,minHeight:0}} title=${"Progresser : "+nx.nom} onClick=${()=>{const l=[...list];l[i]=nx.nom;set(l)}}>↑</button>`}
+        <button className="btn sm ghost" style=${{padding:"0 3px",fontSize:11,minHeight:0}} title="Retirer" onClick=${()=>set(list.filter((_,k)=>k!==i))}>×</button></span>`})}
+    <input list="pl-exlist" value=${t} placeholder=${list.length?"+":"Ajouter un exercice…"} onChange=${e=>{const v=e.target.value;if(v.endsWith(",")){setT(v);setTimeout(()=>{},0);const x=v.slice(0,-1).trim();if(x){set([...list,x]);setT("")}}else setT(v)}}
+      onKeyDown=${e=>{if(e.key==="Enter"){e.preventDefault();add()}}} onBlur=${add} style=${{border:0,background:"transparent",font:"inherit",fontSize:12,minWidth:list.length?40:150,flex:1,padding:"2px"}}/>
+  </div>`;
+}
+function SeanceCard({c,s,k,date,on}){
+  const two=c.params.length>1;const blocs=s.blocs||[];
+  const toggle=l=>{const b=blocs.find(x=>x.g===l);let nb;if(!b)nb=[...blocs,{g:l,col:0}];else if(two&&b.col===0)nb=blocs.map(x=>x.g===l?{...x,col:1}:x);else nb=blocs.filter(x=>x.g!==l);on({...s,blocs:nb})};
+  const nEx=blocs.reduce((t,b)=>{const g=c.groupes.find(x=>x.label===b.g);return t+(g?String(g.exos||"").split(",").filter(x=>x.trim()).length:0)},0);
+  return html`<div style=${{border:"1px solid var(--line)",borderRadius:10,overflow:"hidden",background:"var(--surface)"}}>
+    <div style=${{background:"var(--surface-2)",fontSize:11.5,fontWeight:800,padding:"4px 8px",display:"flex",alignItems:"center"}}>Séance ${k+1}<div className="spacer"></div><span className="sub" style=${{fontWeight:600,fontSize:10.5}}>${nEx} exo${nEx>1?"s":""}</span></div>
+    <div style=${{display:"flex",flexWrap:"wrap",gap:4,padding:"6px 6px 2px"}}>${c.groupes.filter(g=>g.label).map(g=>{const b=blocs.find(x=>x.g===g.label);
+      return html`<button key=${g.label} onClick=${()=>toggle(g.label)} title=${two?"Cliquer : off → "+(c.labels?.[0]||"col. 1")+" → "+(c.labels?.[1]||"col. 2")+" → off":"Inclure ce groupe"} style=${{fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:20,cursor:"pointer",border:"1px solid "+(b?"var(--ink)":"var(--line)"),background:b?(b.col===1?"#18181A":"var(--accent)"):"transparent",color:b&&b.col===1?"#fff":"var(--ink)"}}>${g.label}${b&&two&&c.labels?.[b.col]?" · "+c.labels[b.col].slice(0,5):""}</button>`})}</div>
+    <${PlCell} v=${s.note} cpl=${16} ph="Note / intitulé" on=${v=>on({...s,note:v})}/>
+  </div>`;
+}
+function PlTimeline({pl,sch,focus,onFocus}){
+  if(!sch.length)return null;const s0=parseD(sch[0].start),e0=parseD(sch[sch.length-1].end);const tot=(e0-s0)/864e5+1;const t=TODAY();const tp=(t-s0)/864e5/tot*100;
+  return html`<div style=${{position:"relative",margin:"4px 0 14px"}}>
+    <div style=${{display:"flex",height:34,borderRadius:8,overflow:"hidden",border:"1px solid var(--line)"}}>
+      ${sch.map(x=>{const ph=pl.phases[x.i];const w=((parseD(x.end)-parseD(x.start))/864e5+1)/tot*100;return html`<div key=${x.i+"-"+x.j} onClick=${()=>onFocus(x.i)} title=${`${ph.nom} · cycle ${x.j+1} : ${fmtD(x.start)} → ${fmtD(x.end)}`} style=${{width:w+"%",background:ph.couleur,opacity:focus===null||focus===x.i?1:.45,borderRight:"1px solid rgba(0,0,0,.25)",cursor:"pointer",fontSize:10.5,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",whiteSpace:"nowrap",overflow:"hidden",color:"#18181A"}}>${x.j===0?ph.nom+" · ":""}C${x.j+1}</div>`})}
+    </div>
+    ${tp>=0&&tp<=100&&html`<div style=${{position:"absolute",left:tp+"%",top:-4,bottom:-4,width:2,background:"var(--bad)"}} title="Aujourd'hui"></div>`}
+    <div className="row sub" style=${{fontSize:11,marginTop:4}}><span>${fmtD(sch[0].start)}</span><div className="spacer"></div><span>${Math.round(tot/7)} semaines · ${sch.reduce((t,x)=>t+x.seances.length,0)} séances</span><div className="spacer"></div><span>${fmtD(sch[sch.length-1].end)}</span></div>
+  </div>`;
+}
+function PlCycleBlock({db,d,i,j,sx,upd}){
+  const ph=d.phases[i],c=ph.cycles[j],two=c.params.length>1,nC=ph.cycles.length;
+  const U=fn=>upd(y=>fn(y.phases[i].cycles[j],y));
+  const renameGroup=(k,v)=>U(cc=>{const old=cc.groupes[k].label;cc.groupes[k].label=v;cc.seances.forEach(s=>(s.blocs||[]).forEach(b=>{if(b.g===old)b.g=v}))});
+  return html`<div style=${{padding:"10px 12px"}}>
+    <div className="row" style=${{marginBottom:8,gap:6,flexWrap:"wrap"}}>
+      <b style=${{fontSize:14}}>Cycle ${j+1}</b>
+      <span className="row" style=${{gap:3}}><button className="btn sm ghost" style=${{padding:"0 6px"}} onClick=${()=>U(cc=>{cc.semaines=Math.max(1,(+cc.semaines||1)-1)})}>−</button><span className="chip" style=${{fontSize:11.5}}>${c.semaines} sem.</span><button className="btn sm ghost" style=${{padding:"0 6px"}} onClick=${()=>U(cc=>{cc.semaines=Math.min(12,(+cc.semaines||1)+1)})}>+</button></span>
+      ${sx&&html`<span className="sub" style=${{fontSize:11.5}}>${fmtD(sx.start)} → ${fmtD(sx.end)}</span>`}
+      <div className="spacer"></div>
+      ${!two&&html`<select title="Qualité travaillée" value=${plQualOf(c,0)?.label||""} onChange=${e=>U(cc=>{cc.labels=[e.target.value,cc.labels?.[1]||""]})} style=${{fontSize:11.5,fontWeight:700,border:"1px solid var(--line)",borderRadius:20,padding:"2px 6px",background:plQualOf(c,0)?.color||"transparent",color:plQualOf(c,0)&&plQualOf(c,0).k!=="pui"?"#fff":"var(--ink)"}}><option value="">Qualité…</option>${PL_QUAL.map(q=>html`<option key=${q.k} value=${q.label}>${q.label}</option>`)}</select>`}
+      <details className="pl-menu"><summary className="btn sm ghost" style=${{padding:"0 8px"}}>⋯</summary><div className="pl-pop" onClick=${e=>{const dt=e.currentTarget.closest("details");if(dt)dt.open=false}}>
+        ${j>0&&html`<button className="btn sm ghost" onClick=${()=>U((cc,y)=>{y.phases[i].cycles[j]=JSON.parse(JSON.stringify(y.phases[i].cycles[j-1]))})}>Recopier le cycle ${j}</button>`}
+        ${i>0&&html`<button className="btn sm ghost" onClick=${()=>U((cc,y)=>{const src=y.phases[i-1].cycles[j];if(src)y.phases[i].cycles[j]=JSON.parse(JSON.stringify(src))})}>Recopier le cycle ${j+1} de ${d.phases[i-1].nom}</button>`}
+        <button className="btn sm ghost" onClick=${()=>U(cc=>{if(cc.params.length>1){cc.params=[cc.params[0]];cc.seances.forEach(s=>(s.blocs||[]).forEach(b=>{b.col=0}))}else{cc.params.push(plParam());cc.labels=[cc.labels?.[0]||"Hypertrophie",cc.labels?.[1]||"Force"]}})}>${two?"Retirer la 2e colonne":"Ajouter une 2e colonne (ex. force)"}</button>
+        <button className="btn sm ghost" onClick=${()=>U((cc,y)=>{y.phases[i].cycles[j]=plCycle(y.nS)})}>Vider ce cycle</button>
+        <div className="sub" style=${{fontSize:10.5,fontWeight:800,textTransform:"uppercase",letterSpacing:".04em",padding:"6px 8px 2px"}}>Préremplir avec un protocole</div>
+        ${PL_QUAL.flatMap(q=>q.presets.map(pr=>html`<button key=${q.k+pr.nom} className="btn sm ghost" onClick=${()=>upd(y=>{const cc=y.phases[i].cycles[j];const m=cc.params.length>1?(plQualOf(cc,1)===q?1:plQualOf(cc,0)===q?0:(q.k==="hyp"?0:1)):0;plApplyPreset(y,q,pr,i,j,m)})}><i style=${{display:"inline-block",width:8,height:8,borderRadius:4,background:q.color,marginRight:6}}></i>${q.label} · ${pr.nom}${pr.steps?" (cycles "+(j+1)+"→)":""}</button>`))}
+      </div></details>
+    </div>
+    <table className="pl-t"><tbody>
+      ${two&&html`<tr><td className="pl-l"></td>${[0,1].map(k=>html`<td key=${k} style=${{background:k?"#18181A":"var(--accent-soft, #FBF1C7)"}}><input value=${c.labels?.[k]||""} placeholder=${k?"Force":"Hypertrophie"} onChange=${e=>U(cc=>{cc.labels[k]=e.target.value})} style=${{width:"100%",border:0,background:"transparent",textAlign:"center",fontWeight:800,fontSize:12,color:k?"#fff":"var(--ink)",padding:"4px"}}/></td>`)}</tr>`}
+      ${PL_PARAMS.map(([k,l])=>html`<tr key=${k}><td className="pl-l">${l}</td>${c.params.map((pp,m)=>html`<td key=${m}><${PlCell} v=${pp[k]} center=${true} cpl=${two?12:30} on=${v=>U(cc=>{cc.params[m][k]=v})}/></td>`)}</tr>`)}
+    </tbody></table>
+    <${PlChecks} d=${d} c=${c}/>
+    <div className="mini-t" style=${{marginTop:10}}>Groupes d'exercices</div>
+    <table className="pl-t"><tbody>
+      ${c.groupes.map((g,k)=>html`<tr key=${k}><td className="pl-l" style=${{padding:0}}><input value=${g.label} placeholder="Groupe" onChange=${e=>renameGroup(k,e.target.value)} style=${{width:"100%",border:0,background:"transparent",fontWeight:700,fontSize:12,padding:"5px 8px"}}/></td>
+        <td><${ExoChips} db=${db} value=${g.exos} on=${v=>U(cc=>{cc.groupes[k].exos=v})}/></td>
+        <td style=${{width:24,textAlign:"center"}}><button className="btn sm ghost" style=${{padding:"0 4px"}} title="Retirer le groupe" onClick=${()=>U(cc=>{const l=cc.groupes[k].label;cc.groupes.splice(k,1);cc.seances.forEach(s=>{s.blocs=(s.blocs||[]).filter(b=>b.g!==l)})})}>×</button></td></tr>`)}
+    </tbody></table>
+    <button className="btn sm ghost" style=${{fontSize:11,marginTop:2}} onClick=${()=>U(cc=>{cc.groupes.push({label:"Groupe "+(cc.groupes.length+1),exos:""})})}>+ groupe</button>
+    <div className="mini-t" style=${{marginTop:8}}>Séances de la semaine <span className="sub" style=${{fontWeight:500,textTransform:"none",letterSpacing:0}}>· touchez les groupes à inclure${two?" (2e touche = "+(c.labels?.[1]||"col. 2")+")":""}</span></div>
+    <div style=${{display:"grid",gridTemplateColumns:`repeat(${Math.min(c.seances.length,3)},1fr)`,gap:6}}>
+      ${c.seances.map((s,k)=>html`<${SeanceCard} key=${k} c=${c} s=${s} k=${k} on=${ns=>U(cc=>{cc.seances[k]=ns})}/>`)}
+    </div>
+  </div>`;
+}
+function GlobalPlanView({db,pid,act,toast,goTab}){
+  const plans=byPatient(db.plans||[],pid);
+  const [sel,setSel]=useState(plans[0]?.id||null);
+  const cur=plans.find(x=>x.id===sel)||null;
+  const [d,setD]=useState(()=>cur?plNormalize(cur):null);
+  const [base,setBase]=useState(()=>cur?JSON.stringify(plNormalize(cur)):null);
+  const [mode,setMode]=useState(()=>window.innerWidth<1300?"phase":"all");const [focus,setFocus]=useState(0);const [conf,setConf]=useState(null);const [qt,setQt]=useState("plan");
+  useEffect(()=>{const c=plans.find(x=>x.id===sel);const n=c?plNormalize(c):null;setD(n);setBase(n?JSON.stringify(n):null)},[sel,pid]);
+  const dirty=d&&JSON.stringify(d)!==base;
+  const upd=fn=>setD(x=>{const y=JSON.parse(JSON.stringify(x));fn(y);return y});
+  const persist=()=>{const id=act.saveRec("plans",{...d,patientId:pid});const nd={...d,id};setD(nd);setBase(JSON.stringify(nd));if(!sel)setSel(id);return nd};
+  const create=tpl=>{const p=tpl==="genou"?plModeleGenou(pid):plBlank(pid);const id=act.saveRec("plans",p);setSel(id);toast(`Plan ${id} créé`)};
+  const p=db.patients.find(x=>x.id===pid);
+  if(!d)return html`<div className="ph-hero"><h3>Vue globale du traitement</h3><div className="sub" style=${{marginBottom:14,maxWidth:720}}>Construisez tout le traitement sur un seul écran : phases, cycles, paramètres, groupes d'exercices et séances de la semaine. Un bouton l'envoie ensuite dans <b>Phases & cycles</b> (avec les dates) et dans le <b>Calendrier</b> (séances planifiées, exercices pré-remplis).</div>
+    <div className="row"><button className="btn yellow" onClick=${()=>create("vide")}><${Ico} n="plus" s=${15} w=${2.2}/>Plan vierge (3 × 3)</button><button className="btn" onClick=${()=>create("genou")}>Partir de mon modèle genou (Excel)</button></div></div>`;
+  const nP=d.phases.length,nC=d.nC||3,nS=d.nS||3;const sch=plSchedule(d);const sAt=(i,j)=>sch.find(x=>x.i===i&&x.j===j);
+  const setN=(a,b,c)=>setD(x=>plResize(x,Math.max(1,Math.min(6,a)),Math.max(1,Math.min(6,b)),Math.max(1,Math.min(6,c))));
+  const step=(l,v,on)=>html`<div className="row" style=${{gap:4}}><span className="sub" style=${{fontWeight:700,fontSize:12}}>${l}</span><button className="btn sm" onClick=${()=>on(v-1)} disabled=${v<=1}>−</button><b className="mono" style=${{minWidth:14,textAlign:"center"}}>${v}</b><button className="btn sm" onClick=${()=>on(v+1)} disabled=${v>=6}>+</button></div>`;
+  const askApply=()=>{const nd=dirty||!d.id?persist():d;const stt=applyPlanToDb(db,{...nd,patientId:pid},true);setConf({pl:nd,st:stt})};
+  const doApply=()=>{act.applyPlan({...conf.pl,patientId:pid});toast("Planning mis à jour : phases & cycles + calendrier");setConf(null)};
+  const phaseHead=(ph,i)=>html`<div style=${{background:ph.couleur,padding:"8px 10px",display:"flex",alignItems:"center",gap:8,position:"sticky",top:0,zIndex:2}}>
+    <input value=${ph.nom} onChange=${e=>upd(y=>{y.phases[i].nom=e.target.value})} style=${{flex:1,border:0,background:"transparent",fontWeight:800,fontSize:15,textAlign:"center",color:"#18181A",minWidth:0}}/>
+    <div className="row" style=${{gap:3}}>${PL_COLORS.map(c=>html`<button key=${c} title="Couleur" onClick=${()=>upd(y=>{y.phases[i].couleur=c})} style=${{width:13,height:13,borderRadius:7,border:ph.couleur===c?"2px solid #18181A":"1px solid rgba(0,0,0,.25)",background:c,padding:0,cursor:"pointer"}}></button>`)}</div></div>`;
+  const objBlock=(ph,i)=>html`<div style=${{padding:"8px 12px",borderBottom:"1px solid var(--line)",background:"var(--surface-2)"}}>
+    <div className="mini-t" style=${{marginTop:0}}>Objectifs <span className="sub" style=${{fontWeight:500,textTransform:"none",letterSpacing:0}}>· un par ligne, par priorité (le 1er devient l'objectif principal du cycle)</span></div>
+    <${PlCell} v=${ph.objectifs} rows=${2} cpl=${40} on=${v=>upd(y=>{y.phases[i].objectifs=v})} ph=${"Force\nMobilité cheville…"}/></div>`;
+  const critBlock=(ph,i)=>html`<div style=${{padding:"8px 12px",background:"var(--surface-2)",borderTop:"1px solid var(--line)"}}>
+    <div className="mini-t" style=${{marginTop:0,fontStyle:"italic"}}>${i<nP-1?"Critères de passage → "+(d.phases[i+1]?.nom||""):"Critères RTS"}</div>
+    <${PlCell} v=${ph.criteres} rows=${2} cpl=${40} ph=${i<nP-1?"Ex. LSI quadriceps ≥ 80 %, EVA activité < 3…":"Ex. LSI ≥ 90 %, hop tests > 90 %…"} on=${v=>upd(y=>{y.phases[i].criteres=v})}/></div>`;
+  const printIt=()=>{
+    const css=`@page{size:A4 landscape;margin:8mm}body{max-width:none!important;margin:0!important;padding:0 4px!important;font-size:9.5px!important}.pg{display:grid;grid-template-columns:repeat(${nP},1fr);border:1.5px solid #18181A}.pc{border-right:2px solid #18181A}.pc:last-child{border-right:0}
+      .ph{font-weight:800;text-align:center;padding:5px;font-size:12px}.ob{text-align:center;padding:4px;border-bottom:1px solid #ccc;background:#f6f5f1}.cy{border-bottom:4px solid #18181A;padding:3px 4px;page-break-inside:avoid}
+      .pg table{margin:2px 0}.pg td,.pg th{font-size:9px;padding:2px 4px;text-align:center;border:1px solid #e2e0d8}.pg td.l{text-align:left;font-weight:700;background:#f6f5f1;white-space:nowrap}.cr{padding:4px;text-align:center}.cr i{display:block;font-weight:700}`;
+    const col=(ph,i)=>`<div class="pc"><div class="ph" style="background:${ph.couleur}">${esc(ph.nom)}</div><div class="ob"><b>Objectifs</b><br>${esc(ph.objectifs||"—").split("\n").map((o,k)=>`${k+1}. ${o}`).join("<br>")}</div>
+      ${ph.cycles.map((c,j)=>{const two=c.params.length>1;const sx=sAt(i,j);return `<div class="cy"><b>Cycle ${j+1}</b> · ${c.semaines} sem.${sx?` · ${fmtD(sx.start)} → ${fmtD(sx.end)}`:""}<table style="width:100%">${two?`<tr><td></td><th>${esc(c.labels?.[0]||"")}</th><th>${esc(c.labels?.[1]||"")}</th></tr>`:""}${PL_PARAMS.map(([k,l])=>`<tr><td class="l">${l}</td>${c.params.map(pp=>`<td>${esc(pp[k]||"")}</td>`).join("")}</tr>`).join("")}</table>
+        <table style="width:100%"><tr>${c.seances.map((x,k)=>`<th>Séance ${k+1}</th>`).join("")}</tr><tr>${c.seances.map(x=>`<td style="vertical-align:top;text-align:left">${(x.blocs||[]).map(b=>esc(b.g+(two&&c.labels?.[b.col]?" ("+c.labels[b.col]+")":""))).join("<br>")}${x.note?"<br><i>"+esc(x.note)+"</i>":""}</td>`).join("")}</tr></table>
+        <table style="width:100%">${c.groupes.filter(g=>g.label||g.exos).map(g=>`<tr><td class="l">${esc(g.label)}</td><td style="text-align:left">${esc(g.exos)}</td></tr>`).join("")}</table></div>`}).join("")}
+      <div class="cr"><i>${i<nP-1?"Critères de passage "+esc(d.phases[i+1].nom):"Critères RTS"}</i>${esc(ph.criteres||"—").replace(/\n/g,"<br>")}</div></div>`;
+    printDoc(d.nom,`<style>${PRINT_CSS2}${css}</style><h1 style="font-size:15px">${esc(d.nom)}</h1><div class="mut" style="margin-bottom:6px">${esc(fullName(p||{}))} · ${nP} phase(s) × ${nC} cycle(s) · du ${fmtD(sch[0]?.start)} au ${fmtD(sch[sch.length-1]?.end)}</div><div class="pg">${d.phases.map(col).join("")}</div>`,toast)};
+  const shown=mode==="all"?d.phases.map((_,i)=>i):[Math.min(focus,nP-1)];
+  return html`<div>
+    <div className="card" style=${{padding:"12px 14px",marginBottom:12}}>
+      <div className="row" style=${{flexWrap:"wrap",gap:10}}>
+        ${plans.length>1&&html`<select className="inp" style=${{width:200}} value=${sel||""} onChange=${e=>{if(dirty&&!confirm("Modifications non enregistrées : continuer ?"))return;setSel(e.target.value)}}>${plans.map(x=>html`<option key=${x.id} value=${x.id}>${x.nom}</option>`)}</select>`}
+        <input className="inp" style=${{width:230,fontWeight:700}} value=${d.nom} onChange=${e=>upd(y=>{y.nom=e.target.value})}/>
+        <div className="row" style=${{gap:5}}><span className="sub" style=${{fontWeight:700,fontSize:12}}>Début</span><input type="date" className="inp" style=${{width:150}} value=${d.debut} onChange=${e=>upd(y=>{y.debut=e.target.value})}/></div>
+        <div className="row" style=${{gap:3}}><span className="sub" style=${{fontWeight:700,fontSize:12,marginRight:3}}>Jours</span>${PL_DAYS.map((l,k)=>{const on=d.jours.includes(k+1);return html`<button key=${k} onClick=${()=>upd(y=>{y.jours=on?y.jours.filter(x=>x!==k+1):[...y.jours,k+1].sort((a,b)=>a-b);if(!y.jours.length)y.jours=[k+1]})} style=${{width:26,height:26,borderRadius:13,border:"1px solid "+(on?"var(--ink)":"var(--line)"),background:on?"var(--ink)":"transparent",color:on?"#fff":"var(--ink)",fontSize:11,fontWeight:800,cursor:"pointer"}}>${l}</button>`})}</div>
+        <div className="spacer"></div>
+        <button className=${"btn "+(dirty?"":"")} disabled=${!dirty} onClick=${()=>{persist();toast("Vue globale enregistrée")}}>${dirty?"Enregistrer":"Enregistré"}</button>
+        <button className="btn yellow" onClick=${askApply}>Appliquer au planning →</button>
+      </div>
+      <div className="row" style=${{flexWrap:"wrap",gap:14,marginTop:10}}>
+        ${step("Phases",nP,v=>setN(v,nC,nS))}${step("Cycles / phase",nC,v=>setN(nP,v,nS))}${step("Séances / semaine",nS,v=>setN(nP,nC,v))}
+        ${d.jours.length<nS&&html`<span className="warn-t" style=${{fontSize:12}}>${nS} séances pour ${d.jours.length} jour(s) cochés : des séances tomberont la semaine suivante.</span>`}
+        <div className="spacer"></div>
+        <div className="seg"><button className=${mode==="all"?"on":""} onClick=${()=>setMode("all")}>Toutes les phases</button><button className=${mode==="phase"?"on":""} onClick=${()=>setMode("phase")}>Phase par phase</button></div>
+        <details className="pl-menu"><summary className="btn sm ghost">Plus ⋯</summary><div className="pl-pop" onClick=${e=>{const dt=e.currentTarget.closest("details");if(dt)dt.open=false}} style=${{right:0}}>
+          <button className="btn sm ghost" onClick=${printIt}>Imprimer (A4 paysage)</button>
+          <button className="btn sm ghost" onClick=${()=>{const id=act.saveRec("plans",{...JSON.parse(JSON.stringify(d)),id:undefined,appliedAt:undefined,nom:d.nom+" (copie)",patientId:pid});setSel(id);toast("Copie créée")}}>Dupliquer le plan</button>
+          <button className="btn sm ghost" onClick=${()=>create("vide")}>Nouveau plan vierge</button>
+          <button className="btn sm ghost" onClick=${()=>create("genou")}>Nouveau plan · modèle genou</button>
+          ${d.id&&html`<button className="btn sm ghost" style=${{color:"var(--bad)"}} onClick=${()=>{if(confirm("Supprimer ce plan ? Les phases et séances déjà créées dans le planning sont conservées.")){act.delRec("plans",d.id);setSel(plans.find(x=>x.id!==d.id)?.id||null);toast("Plan supprimé")}}}>Supprimer le plan</button>`}
+        </div></details>
+      </div>
+    </div>
+    <div className="seg" style=${{marginBottom:12,flexWrap:"wrap"}}>
+      <button className=${qt==="plan"?"on":""} onClick=${()=>setQt("plan")}>Plan</button>
+      ${PL_QUAL.map(q=>{const n=d.phases.reduce((t,ph)=>t+ph.cycles.reduce((u,c)=>u+c.params.filter((_,m)=>plQualOf(c,m)===q).length,0),0);return html`<button key=${q.k} className=${qt===q.k?"on":""} onClick=${()=>setQt(q.k)}><i style=${{display:"inline-block",width:9,height:9,borderRadius:5,background:q.color,marginRight:6}}></i>${q.label}${n?html` <span className="sub" style=${{fontSize:11}}>${n}</span>`:""}</button>`})}
+    </div>
+    ${qt!=="plan"?html`<${PlQualView} d=${d} q=${PL_QUAL.find(q=>q.k===qt)} upd=${upd} toast=${toast} onOpen=${i=>{setQt("plan");setMode("phase");setFocus(i)}}/>`:html`<div>
+    <${PlTimeline} pl=${d} sch=${sch} focus=${mode==="phase"?Math.min(focus,nP-1):null} onFocus=${i=>{setFocus(i);if(mode==="all"){const el=document.getElementById("plph-"+i);if(el)el.scrollIntoView({behavior:"smooth",inline:"start",block:"nearest"})}}}/>
+    ${d.appliedAt&&html`<div className="sub" style=${{fontSize:12,marginBottom:8}}>Dernière application au planning : ${new Date(d.appliedAt).toLocaleString("fr-FR")}${dirty?" · modifications non appliquées":""}</div>`}
+    ${mode==="phase"&&html`<div className="seg" style=${{marginBottom:10}}>${d.phases.map((ph,i)=>html`<button key=${i} className=${Math.min(focus,nP-1)===i?"on":""} onClick=${()=>setFocus(i)}><i style=${{display:"inline-block",width:9,height:9,borderRadius:5,background:ph.couleur,marginRight:6}}></i>${ph.nom}</button>`)}</div>`}
+    <div style=${{overflowX:"auto",paddingBottom:8}}>
+      ${mode==="all"?html`<div style=${{display:"grid",gridTemplateColumns:`repeat(${nP},minmax(420px,1fr))`,border:"1px solid var(--line)",borderRadius:12,overflow:"hidden",background:"var(--surface)",minWidth:nP*420}}>
+        ${d.phases.map((ph,i)=>html`<div key=${i} id=${"plph-"+i} style=${{borderRight:i<nP-1?"2px solid var(--ink)":"",display:"flex",flexDirection:"column"}}>
+          ${phaseHead(ph,i)}${objBlock(ph,i)}
+          ${ph.cycles.map((c,j)=>html`<div key=${j} style=${{borderBottom:j<nC-1?"5px solid var(--ink)":"1px solid var(--line)"}}><${PlCycleBlock} db=${db} d=${d} i=${i} j=${j} sx=${sAt(i,j)} upd=${upd}/></div>`)}
+          <div style=${{marginTop:"auto"}}>${critBlock(ph,i)}</div></div>`)}
+      </div>`:shown.map(i=>{const ph=d.phases[i];return html`<div key=${i} style=${{border:"1px solid var(--line)",borderRadius:12,overflow:"hidden",background:"var(--surface)"}}>
+          ${phaseHead(ph,i)}${objBlock(ph,i)}
+          <div style=${{display:"grid",gridTemplateColumns:`repeat(${nC},minmax(380px,1fr))`,minWidth:nC*380}}>${ph.cycles.map((c,j)=>html`<div key=${j} style=${{borderRight:j<nC-1?"4px solid var(--ink)":""}}><${PlCycleBlock} db=${db} d=${d} i=${i} j=${j} sx=${sAt(i,j)} upd=${upd}/></div>`)}</div>
+          ${critBlock(ph,i)}</div>`})}
+    </div></div>`}
+    <${ExDatalist} db=${db} id="pl-exlist"/>
+    ${conf&&html`<div className="ov" onClick=${()=>setConf(null)}><div className="modal" style=${{maxWidth:520}} onClick=${e=>e.stopPropagation()}>
+      <div className="modal-h"><b>Appliquer au planning</b></div>
+      <div className="modal-b" style=${{fontSize:13.5,lineHeight:1.6}}>
+        Du <b>${fmtD(conf.st.first)}</b> au <b>${fmtD(conf.st.last)}</b> :
+        <div>· <b>Phases & cycles</b> : ${conf.st.phNew} créé(s), ${conf.st.phUpd} mis à jour, ${conf.st.phDel} retiré(s)</div>
+        <div>· <b>Calendrier</b> : ${conf.st.seNew} séance(s) planifiée(s) créée(s), ${conf.st.seUpd} mise(s) à jour, ${conf.st.seDel} retirée(s)</div>
+        ${conf.st.seKeep>0&&html`<div>· ${conf.st.seKeep} séance(s) déjà réalisée(s) conservée(s) telles quelles</div>`}
+        <div className="note" style=${{marginTop:10,fontSize:12.5}}>Seuls les éléments créés par cette vue globale sont modifiés : vos phases et séances saisies à la main, les séances réalisées et les déficits associés aux phases sont conservés. Les exercices des séances sont pré-remplis à partir des groupes cochés et des paramètres du cycle.</div>
+      </div>
+      <div className="modal-f"><button className="btn" onClick=${()=>setConf(null)}>Annuler</button><div className="spacer"></div><button className="btn yellow" onClick=${doApply}>Appliquer</button></div>
+    </div></div>`}
+  </div>`;
+}
+
+/* ---------- V0.9.7 : onglets Hypertrophie / Force / Puissance / Endurance (repères + protocoles + contrôle du plan) ---------- */
+const PL_QUAL=[
+  {k:"hyp",label:"Hypertrophie",re:/hypertroph/,color:"#E4473A",sub:"Doser les leviers de croissance musculaire",
+    focus:["Un volume hebdomadaire pertinent","Des séries suffisamment dures","Des exercices qui chargent bien le muscle, idéalement en position longue","Une récupération suffisante pour tenir dans la durée","Seulement ensuite : tempo, techniques avancées, densité, ordre des exercices"],
+    vars:[["Volume","8 à 15 reps / série · 10 à 20 séries / semaine / groupe"],["Fréquence","Élevée, si la récupération suit"],["Charge","Dépend du volume et du RPE"],["Choix des exercices","Poly-articulaires en priorité · respect du continuum"],["Ordre","Muscles ciblés en début de séance"],["Amplitude","Complète = meilleure hypertrophie"],["Intensité","RIR 1 à 3"],["Récupération","Longue → stress mécanique · courte → stress métabolique"]],
+    presets:[
+      {nom:"Orientation mécanique",desc:"Charges plus lourdes, récupération longue",p:{series:"3-4",reps:"8-10",intensite:"RIR 1-3",recup:"2'-3'",frequence:"2-3 / sem / groupe",amplitude:"Complète, position longue"}},
+      {nom:"Orientation métabolique",desc:"Reps plus hautes, récupération courte",p:{series:"3-4",reps:"12-15",intensite:"RIR 1-3",recup:"1'-1'30",frequence:"2-3 / sem / groupe",amplitude:"Complète, position longue"}},
+      {nom:"Progression sur 3 cycles",desc:"12-15 → 10-12 → 8-10 reps (votre modèle)",steps:[{reps:"12-15"},{reps:"10-12"},{reps:"8-10"}],p:{series:"3-4",intensite:"RIR 1-3",recup:"1'30-2'",frequence:"2-3 / sem / groupe",amplitude:"Complète, position longue"}}],
+    rules:{reps:[8,15],setsWk:[10,20]}},
+  {k:"for",label:"Force",re:/force/,color:"#18181A",sub:"Doser les leviers de développement de la force",
+    vars:[["Volume","3 à 10 reps / série"],["Fréquence","Faible : récupération longue (48 h)"],["Charge","Dépend du volume et du RPE"],["Choix des exercices","Poly-articulaires en priorité · respect du continuum"],["Ordre","Muscles ciblés en début de séance"]],
+    presets:[
+      {nom:"Débutant · efforts répétés",desc:"6 semaines : 3×8 → 3×6 → 3×4 (2 sem. chacun), 1-2 reps en réserve",sem:2,steps:[{reps:"8"},{reps:"6"},{reps:"4"}],p:{exercices:"Poly-articulaire en priorité",series:"3",intensite:"RIR 1-2",recup:"3'",frequence:"1-2 / sem / groupe (48 h)",amplitude:"Spécifique"}},
+      {nom:"APRE intermédiaire (6RM)",desc:"4 séries : 10 à 50 % · 6 à 75 % · max au 6RM · max à charge ajustée",p:{series:"4 (APRE)",reps:"10 · 6 · max · max",intensite:"50 % · 75 % · 6RM · ajustée",recup:"3'",frequence:"1-2 / sem / groupe (48 h)",amplitude:"Spécifique"}}],
+    rules:{reps:[3,10],rest48:true}},
+  {k:"pui",label:"Puissance",re:/puissan/,color:"#F2A23A",sub:"Doser les leviers de développement de la puissance",
+    vars:[["Charge","30 à 60 % de la 1RM"],["Intensité","Maximale : le plus vite possible"],["Volume","3 à 5 séries de 2 à 5 reps"],["Vitesse","0,8 à 1,2 m/s"],["Fréquence","Au moins 2 séances / semaine"],["Récupération","2 min entre les séries"],["Ordre","Toujours en début de séance"]],
+    presets:[{nom:"Puissance",desc:"Charges légères à modérées, vitesse maximale",p:{series:"3-5",reps:"2-5",tempo:"Concentrique explosif",intensite:"30-60 % 1RM · 0,8-1,2 m/s",recup:"2'",frequence:"≥ 2 / sem",amplitude:"Début de séance"}}],
+    rules:{reps:[2,5],freqMin:2}},
+  {k:"end",label:"Endurance",re:/endur/,color:"#5B8FD6",sub:"Endurance musculaire par le travail isométrique",
+    vars:[["Intensité","30 à 50 % de la CMV (contraction maximale volontaire)"],["Durée","20 à 60 s par contraction"],["Séries","3 à 5 / groupe musculaire"],["Fréquence","3 à 5 séances / semaine"],["Récupération","1 à 2 min entre les séries"],["Ordre","Début de séance"],["Modalité","PIMA (pousser contre une résistance fixe) puis HIMA (maintenir une charge)"]],
+    presets:[{nom:"Isométrie endurance",desc:"PIMA puis HIMA, 20-60 s",p:{exercices:"PIMA puis HIMA",series:"3-5",reps:"20-60 s",intensite:"30-50 % CMV",recup:"1'-2'",frequence:"3-5 / sem",amplitude:"Début de séance"}}],
+    rules:{sec:[20,60],freqMin:3,freqMax:5}}
+];
+const plNums=s=>(String(s||"").match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>+x.replace(",","."));
+const plQualOf=(c,m)=>{const l=normName(c.labels?.[m]||"");return l?PL_QUAL.find(q=>q.re.test(l))||null:null};
+function plApplyPreset(y,q,pr,i,j,m){
+  const ph=y.phases[i];let n=0;(pr.steps||[{}]).forEach((st,s)=>{const c=ph.cycles[j+s];if(!c)return;
+    c.labels=[c.labels?.[0]||"",c.labels?.[1]||""];
+    if(m>=c.params.length){c.params.push(plParam());if(!c.labels[0])c.labels[0]="Hypertrophie"}
+    const np={...pr.p,...st};PL_PARAMS.forEach(([k])=>{if(k==="exercices"){if(np.exercices&&!c.params[m].exercices)c.params[m].exercices=np.exercices;return}c.params[m][k]=np[k]||""});
+    c.labels[m]=q.label;if(pr.sem)c.semaines=pr.sem;n++});
+  return n;
+}
+// Contrôle d'une colonne de cycle par rapport aux repères de la qualité (informatif, ne bloque rien)
+function plCheck(d,c,m,q){
+  const out=[];const pp=c.params[m]||{};const two=c.params.length>1;const r=q.rules;
+  const days=[...(d.jours||[1,3,5])].sort((a,b)=>a-b);const grp={};let nSe=0;
+  c.seances.forEach((s,si)=>{let hit=false;(s.blocs||[]).forEach(b=>{if((two?b.col:0)!==m||/mobil/.test(normName(b.g)))return;hit=true;(grp[b.g]=grp[b.g]||[]).push(days[si%days.length]+7*Math.floor(si/days.length))});if(hit)nSe++});
+  const G=Object.keys(grp);
+  if(!G.length){out.push({w:1,t:"aucune séance ne contient de groupe dans cette colonne"});return out}
+  const rp=String(pp.reps||"");const isSec=/\d\s*(s|sec)\b|"/.test(rp);
+  if(r.reps&&rp&&!isSec&&!/max|%|@/i.test(rp)){const n=plNums(rp);if(n.length){const lo=Math.min(...n),hi=Math.max(...n);
+    if(hi>r.reps[1])out.push({w:1,t:`reps jusqu'à ${hi} : au-dessus des repères (${r.reps[0]}-${r.reps[1]})${q.k==="hyp"?", plus métabolique":""}`});
+    else if(lo<r.reps[0])out.push({w:1,t:`reps à partir de ${lo} : sous les repères (${r.reps[0]}-${r.reps[1]})`});
+    else out.push({w:0,t:`reps ${lo===hi?lo:lo+"-"+hi} dans les repères`})}}
+  if(r.sec&&rp&&isSec){const n=plNums(rp);if(n.length){const lo=Math.min(...n),hi=Math.max(...n);out.push(lo<r.sec[0]||hi>r.sec[1]?{w:1,t:`contractions ${lo}-${hi} s : repères ${r.sec[0]}-${r.sec[1]} s`}:{w:0,t:`contractions ${lo}-${hi} s`})}}
+  if(r.freqMin&&q.k==="pui")out.push(nSe<r.freqMin?{w:1,t:`${nSe} séance / sem : viser au moins ${r.freqMin}`}:{w:0,t:`${nSe} séances / sem`});
+  if(q.k==="end")G.forEach(g=>{const n=grp[g].length;out.push(n<r.freqMin||n>r.freqMax?{w:1,t:`${g} : ${n} / sem (repères ${r.freqMin}-${r.freqMax})`}:{w:0,t:`${g} : ${n} / sem`})});
+  if(r.setsWk){const sn=plNums(pp.series).filter(x=>x>0&&x<=8);
+    G.forEach(g=>{const n=grp[g].length;const gg=c.groupes.find(x=>x.label===g);const ne=String(gg?.exos||"").split(",").filter(x=>x.trim()).length;
+      if(!sn.length||!ne){out.push({w:0,t:`${g} : ${n} séance${n>1?"s":""} / sem`});return}
+      const lo=n*ne*Math.min(...sn),hi=n*ne*Math.max(...sn);const txt=`${g} : ≈ ${lo===hi?lo:lo+"-"+hi} séries / sem (${n} séance${n>1?"s":""} × ${ne} exo${ne>1?"s":""})`;
+      out.push(hi<r.setsWk[0]?{w:1,t:txt+" · sous 10"}:lo>r.setsWk[1]?{w:1,t:txt+" · au-dessus de 20"}:{w:0,t:txt})})}
+  if(r.rest48)G.forEach(g=>{const ds=[...new Set(grp[g])].sort((a,b)=>a-b);const close=ds.some((x,k)=>k>0&&x-ds[k-1]<2)||(ds.length>1&&ds[0]+7-ds[ds.length-1]<2);
+    out.push(close?{w:1,t:`${g} : 2 jours de suite, récupération < 48 h`}:{w:0,t:`${g} : ${ds.length} / sem, 48 h respectées`})});
+  return out;
+}
+function PlChecks({d,c}){
+  const cols=c.params.map((_,m)=>[m,plQualOf(c,m)]).filter(x=>x[1]);if(!cols.length)return null;
+  return html`<div style=${{marginTop:6,display:"grid",gap:3}}>${cols.map(([m,q])=>{const it=plCheck(d,c,m,q);return html`<div key=${m} style=${{fontSize:11,lineHeight:1.45,borderLeft:"3px solid "+q.color,paddingLeft:7}}>
+    <b>${q.label}</b>${it.map((x,k)=>html`<div key=${k} style=${{color:x.w?"var(--warn, #B7791F)":"var(--ok, #2F855A)"}}>${x.w?"⚠":"✓"} ${x.t}</div>`)}</div>`})}</div>`;
+}
+function ApreCalc(){
+  const [rm,setRm]=useState("");const [r3,setR3]=useState("");const x=+String(rm).replace(",",".");const r=+r3;
+  const kg=v=>x>0?(Math.round(x*v*2)/2).toLocaleString("fr-FR")+" kg":"—";
+  const adj=!r3?null:r<=2?[-.10,-.05,"−5 à −10 %"]:r<=4?[-.05,0,"pareil ou −5 %"]:r<=7?[0,0,"pareil"]:[.05,.10,"+5 à +10 %"];
+  return html`<div style=${{border:"1px solid var(--line)",borderRadius:10,padding:"10px 12px",marginTop:10}}>
+    <div className="mini-t" style=${{marginTop:0}}>Calcul APRE (charges du jour)</div>
+    <div className="row" style=${{gap:8,flexWrap:"wrap"}}><label className="sub" style=${{fontSize:12}}>6RM <input className="inp" inputmode="decimal" style=${{width:80,marginLeft:4}} value=${rm} placeholder="kg" onChange=${e=>setRm(e.target.value)}/></label>
+      <label className="sub" style=${{fontSize:12}}>Reps faites en série 3 <input className="inp" inputmode="numeric" style=${{width:60,marginLeft:4}} value=${r3} onChange=${e=>setR3(e.target.value)}/></label></div>
+    <table className="pl-t" style=${{marginTop:8}}><tbody>
+      <tr><td className="pl-l">Série 1</td><td>10 reps à 50 % → <b>${kg(.5)}</b></td></tr>
+      <tr><td className="pl-l">Série 2</td><td>6 reps à 75 % → <b>${kg(.75)}</b></td></tr>
+      <tr><td className="pl-l">Série 3</td><td>max de reps au 6RM → <b>${kg(1)}</b></td></tr>
+      <tr><td className="pl-l">Série 4</td><td>${adj?html`max de reps, ${adj[2]} → <b>${adj[0]===adj[1]?kg(1+adj[0]):kg(1+adj[0])+" à "+kg(1+adj[1])}</b>`:html`<span className="sub">selon les reps de la série 3 : 0-2 → −5 à −10 % · 3-4 → pareil ou −5 % · 5-7 → pareil · 8-12 → +5 à +10 %</span>`}</td></tr>
+    </tbody></table>
+    <div className="sub" style=${{fontSize:11,marginTop:4}}>Calcul indicatif, arrondi à 0,5 kg. Rien n'est enregistré.</div>
+  </div>`;
+}
+function PresetCard({d,q,pr,upd,toast}){
+  const nP=d.phases.length;
+  const first=(()=>{for(let i=0;i<nP;i++)for(let j=0;j<d.phases[i].cycles.length;j++){const c=d.phases[i].cycles[j];for(let m=0;m<c.params.length;m++)if(plQualOf(c,m)===q)return [i,j,m]}return [0,0,q.k==="hyp"||q.k==="end"?0:0]})();
+  const colFor=(a,b)=>{const cc=d.phases[a]?.cycles[b];if(!cc)return 0;const k=cc.params.findIndex((_,mm)=>plQualOf(cc,mm)===q);return k>=0?k:(cc.params.length>1&&!plQualOf(cc,1)?1:0)};
+  const [i,setI]=useState(first[0]);const [j,setJ]=useState(pr.steps?0:first[1]);const [m,setM]=useState(()=>colFor(first[0],pr.steps?0:first[1]));
+  const ph=d.phases[Math.min(i,nP-1)];const c=ph?.cycles[Math.min(j,ph.cycles.length-1)];if(!c)return null;
+  const nSteps=(pr.steps||[{}]).length;const span=Math.min(nSteps,ph.cycles.length-j);
+  const params={...pr.p,...(pr.steps?pr.steps[0]:{})};
+  return html`<div style=${{border:"1px solid var(--line)",borderRadius:10,overflow:"hidden",background:"var(--surface)"}}>
+    <div style=${{padding:"8px 12px",borderBottom:"1px solid var(--line)",borderLeft:"4px solid "+q.color}}><b style=${{fontSize:13.5}}>${pr.nom}</b><div className="sub" style=${{fontSize:12}}>${pr.desc}</div></div>
+    <div style=${{padding:"6px 12px",fontSize:12,lineHeight:1.55}}>${PL_PARAMS.filter(([k])=>params[k]||(pr.steps&&k==="reps")).map(([k,l])=>html`<div key=${k}><span className="sub" style=${{display:"inline-block",width:84}}>${l}</span>${k==="reps"&&pr.steps?pr.steps.map(s=>s.reps).join(" → "):params[k]}</div>`)}</div>
+    <div className="row" style=${{gap:6,flexWrap:"wrap",padding:"8px 12px",background:"var(--surface-2)",borderTop:"1px solid var(--line)"}}>
+      <select className="inp" style=${{width:"auto",fontSize:12,padding:"4px 6px"}} value=${i} onChange=${e=>{const ni=+e.target.value;setI(ni);setJ(0);setM(colFor(ni,0))}}>${d.phases.map((p,k)=>html`<option key=${k} value=${k}>${p.nom}</option>`)}</select>
+      <select className="inp" style=${{width:"auto",fontSize:12,padding:"4px 6px"}} value=${j} onChange=${e=>{const nj=+e.target.value;setJ(nj);setM(colFor(i,nj))}}>${ph.cycles.map((_,k)=>html`<option key=${k} value=${k}>${nSteps>1?"À partir du cycle ":"Cycle "}${k+1}</option>`)}</select>
+      <select className="inp" style=${{width:"auto",fontSize:12,padding:"4px 6px"}} value=${m} onChange=${e=>setM(+e.target.value)}>
+        <option value=${0}>Colonne 1${c.labels?.[0]?" ("+c.labels[0]+")":""}</option><option value=${1}>${c.params.length>1?"Colonne 2"+(c.labels?.[1]?" ("+c.labels[1]+")":""):"Ajouter une 2e colonne"}</option></select>
+      <div className="spacer"></div>
+      <button className="btn sm yellow" onClick=${()=>{let n=0;upd(y=>{n=plApplyPreset(y,q,pr,i,j,m)});toast(`${pr.nom} appliqué : ${ph.nom}, cycle${span>1?"s "+(j+1)+" à "+(j+span):" "+(j+1)}`)}}>Appliquer</button>
+    </div>
+    ${nSteps>1&&span<nSteps&&html`<div className="warn-t" style=${{fontSize:11.5,padding:"0 12px 8px"}}>Seulement ${span} cycle(s) disponible(s) après ce point : la progression sera tronquée.</div>`}
+  </div>`;
+}
+function PlQualView({d,q,upd,toast,onOpen}){
+  const uses=[];d.phases.forEach((ph,i)=>ph.cycles.forEach((c,j)=>c.params.forEach((_,m)=>{if(plQualOf(c,m)===q)uses.push({i,j,m,c,ph})})));
+  return html`<div>
+    <div style=${{background:q.color,color:q.k==="pui"?"#18181A":"#fff",borderRadius:12,padding:"12px 16px",marginBottom:12}}><div style=${{fontWeight:800,fontSize:18}}>${q.label}</div><div style=${{fontSize:12.5,opacity:.9}}>${q.sub}</div></div>
+    <div className="agrid" style=${{gap:12}}>
+      <div className="card" style=${{padding:"12px 14px"}}>
+        ${q.focus&&html`<div className="mini-t" style=${{marginTop:0}}>Sur quoi mettre l'accent, dans l'ordre</div>
+          <ol style=${{margin:"4px 0 12px",paddingLeft:20,fontSize:13,lineHeight:1.6}}>${q.focus.map((f,k)=>html`<li key=${k} style=${{fontWeight:k<4?700:500,color:k<4?"var(--ink)":"var(--ink-2)"}}>${f}</li>`)}</ol>`}
+        <div className="mini-t" style=${{marginTop:q.focus?0:0}}>Variables</div>
+        <table className="pl-t"><tbody>${q.vars.map(([l,v])=>html`<tr key=${l}><td className="pl-l" style=${{width:130}}>${l}</td><td style=${{fontSize:12.5,padding:"5px 8px"}}>${v}</td></tr>`)}</tbody></table>
+        ${q.k==="for"&&html`<${ApreCalc}/>`}
+      </div>
+      <div>
+        <div className="mini-t" style=${{marginTop:0}}>Protocoles prêts à l'emploi <span className="sub" style=${{fontWeight:500,textTransform:"none",letterSpacing:0}}>· remplissent les paramètres d'une colonne du plan (exercices et séances inchangés)</span></div>
+        <div style=${{display:"grid",gap:10}}>${q.presets.map(pr=>html`<${PresetCard} key=${pr.nom} d=${d} q=${q} pr=${pr} upd=${upd} toast=${toast}/>`)}</div>
+      </div>
+    </div>
+    <div className="card" style=${{padding:"12px 14px",marginTop:12}}>
+      <div className="mini-t" style=${{marginTop:0}}>Dans votre plan</div>
+      ${uses.length?uses.map(u=>{const it=plCheck(d,u.c,u.m,q);const nw=it.filter(x=>x.w).length;return html`<div key=${u.i+"-"+u.j+"-"+u.m} style=${{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 0",borderTop:"1px solid var(--line)"}}>
+          <i style=${{width:10,height:10,borderRadius:5,background:u.ph.couleur,marginTop:4,flex:"none"}}></i>
+          <div style=${{flex:1,minWidth:0}}><b style=${{fontSize:13}}>${u.ph.nom} · cycle ${u.j+1}</b>${u.c.params.length>1?html`<span className="sub" style=${{fontSize:12}}> · colonne ${u.m+1}</span>`:""}
+            <span className="chip" style=${{fontSize:10.5,marginLeft:6,background:nw?"#FCEFD9":"#E3F1E7"}}>${nw?nw+" point(s) à vérifier":"conforme aux repères"}</span>
+            <div style=${{fontSize:12,lineHeight:1.6,marginTop:2}}>${it.map((x,k)=>html`<div key=${k} style=${{color:x.w?"var(--warn, #B7791F)":"var(--ink-2)"}}>${x.w?"⚠":"✓"} ${x.t}</div>`)}</div></div>
+          <button className="btn sm ghost" onClick=${()=>onOpen(u.i)}>Voir dans le plan</button></div>`})
+        :html`<div className="sub" style=${{fontSize:12.5}}>Aucun cycle n'est encore étiqueté « ${q.label} ». Appliquez un protocole ci-dessus, ou choisissez la qualité dans l'en-tête d'un cycle.</div>`}
+      <div className="sub" style=${{fontSize:11,marginTop:8}}>Contrôle indicatif, calculé sur les paramètres et les séances cochées. Il ne décide rien à votre place.</div>
+    </div>
+  </div>`;
+}
+
+/* =========================================================
    MODULES À VENIR (lecture des données existantes)
    ========================================================= */
 const MODULE_INFO={
@@ -4206,11 +4625,12 @@ function App({vault}={}){
     moveInChain(cid,i,dir){setDbRaw(d=>({...d,chaines:d.chaines.map(k=>{if(k.id!==cid)return k;const it=[...k.items];const j=i+dir;if(j<0||j>=it.length)return k;[it[i],it[j]]=[it[j],it[i]];return {...k,items:it}})}))},
     removeFromChain(cid,i){setDbRaw(d=>({...d,chaines:d.chaines.map(k=>k.id!==cid?k:{...k,items:k.items.filter((_,j)=>j!==i)})}))},
     setQLabel(q,id,t){setDbRaw(d=>{const L={...(d.settings.qLabels||{})};L[q]={...(L[q]||{}),[id]:t};return {...d,settings:{...d.settings,qLabels:L}}})},
-    saveRec(coll,x){const P={rdv:["R","R"],alertes:["A","A"],documents:["DOC","DOC"]}[coll];const isNew=!x.id;const id=isNew?P[0]+"-"+pad((db.counters[P[1]]||0)+1):x.id;
-      setDbRaw(d=>{let c=d.counters;if(isNew)c={...c,[P[1]]:(c[P[1]]||0)+1};const rec={...x,id,updatedAt:nowISO()};const lab={rdv:"rendez-vous",alertes:"alerte",documents:"document"}[coll];
-        return {...d,counters:c,[coll]:isNew?[...d[coll],rec]:d[coll].map(y=>y.id===id?rec:y),audit:[...d.audit,logEntry(x.patientId,(isNew?"Création":"Modification")+` ${lab} ${id}`)]}});return id},
-    delRec(coll,id){setDbRaw(d=>{const x=d[coll].find(y=>y.id===id);return {...d,[coll]:d[coll].filter(y=>y.id!==id),audit:[...d.audit,logEntry(x?.patientId,"Suppression "+id)]}})},
+    saveRec(coll,x){const P={rdv:["R","R"],alertes:["A","A"],documents:["DOC","DOC"],plans:["PL","PL"]}[coll];const isNew=!x.id;const id=isNew?P[0]+"-"+pad((db.counters[P[1]]||0)+1):x.id;
+      setDbRaw(d=>{let c=d.counters;if(isNew)c={...c,[P[1]]:(c[P[1]]||0)+1};const rec={...x,id,updatedAt:nowISO()};const lab={rdv:"rendez-vous",alertes:"alerte",documents:"document",plans:"planification globale"}[coll];
+        return {...d,counters:c,[coll]:isNew?[...(d[coll]||[]),rec]:(d[coll]||[]).map(y=>y.id===id?rec:y),audit:[...d.audit,logEntry(x.patientId,(isNew?"Création":"Modification")+` ${lab} ${id}`)]}});return id},
+    delRec(coll,id){setDbRaw(d=>{const x=(d[coll]||[]).find(y=>y.id===id);return {...d,[coll]:(d[coll]||[]).filter(y=>y.id!==id),audit:[...d.audit,logEntry(x?.patientId,"Suppression "+id)]}})},
     saveTemplate(t){setDbRaw(d=>({...d,settings:{...d.settings,bilanTemplates:[...(d.settings.bilanTemplates||[]),t]},audit:[...d.audit,logEntry(null,"Nouveau modèle de bilan : "+t.l)]}))},
+    applyPlan(pl){setDbRaw(d=>applyPlanToDb(d,pl,false,logEntry))},
     saveSeancesBulk(list){setDbRaw(d=>{let n=d.counters.S||0;const recs=list.map(x=>{n++;return {...x,id:"S-"+pad(n),updatedAt:nowISO()}});return {...d,counters:{...d.counters,S:n},seances:[...d.seances,...recs],audit:[...d.audit,logEntry(list[0]?.patientId,`Planification de ${recs.length} séance(s)`)]}})},
     saveSeanceTemplate(t){setDbRaw(d=>({...d,seanceTemplates:[...(d.seanceTemplates||[]),t],audit:[...d.audit,logEntry(null,"Nouveau modèle de séance : "+t.nom)]}))},
     setSettings(S){setDbRaw(d=>({...d,settings:S,audit:[...d.audit,logEntry(null,"Paramètres de calcul modifiés")]}))},
