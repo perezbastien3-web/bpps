@@ -4049,7 +4049,21 @@ function fmtsSafe(e){try{return typeof fmsSentence==="function"?fmsSentence(e):n
    ========================================================= */
 const PL_PARAMS=[["exercices","Exercices"],["series","Séries"],["reps","Reps"],["tempo","Tempo"],["intensite","Intensité"],["recup","Récup"],["frequence","Fréquence"],["amplitude","Amplitude"]];
 const PL_COLORS=["#F7E35A","#F2A23A","#E4473A","#7FB77E","#5B8FD6","#9B7BD1"];
-const PL_GROUPS=["IJ","Q","Chaîne lat","Mobilité"];
+const PL_GROUPS=["Mobilité","Groupe 1","Groupe 2"];
+const PL_GSETS=[
+  {id:"genou",l:"Genou",g:["IJ","Q","Chaîne lat","Mobilité"]},
+  {id:"cheville",l:"Cheville / pied",g:["Mollet / soléaire","Pied / intrinsèques","Équilibre / proprio","Mobilité"]},
+  {id:"hanche",l:"Hanche",g:["Fessiers","Adducteurs","Fléchisseurs","Mobilité"]},
+  {id:"muscle",l:"Lésion musculaire",g:["Muscle lésé","Chaîne associée","Course / terrain","Mobilité"]},
+  {id:"general",l:"Général",g:["Mobilité / échauffement","Bas du corps","Haut du corps","Gainage"]},
+  {id:"vide",l:"Vierge",g:PL_GROUPS}];
+const plGsets=db=>[...PL_GSETS,...((db?.settings?.plGroupSets)||[]).map(x=>({...x,mine:true}))];
+const plCurLabels=c=>c.groupes.map(g=>g.label).filter(Boolean);
+// Remplace les groupes d'un cycle : un groupe au même nom garde ses exercices et ses séances, les autres repartent vides
+function plSetGroups(c,labels){const old=c.groupes;const keep=new Set();
+  c.groupes=labels.map(l=>{const o=old.find(g=>normName(g.label)===normName(l));if(o)keep.add(o.label);return {label:l,exos:o?.exos||""}});
+  c.seances.forEach(s=>{s.blocs=(s.blocs||[]).filter(b=>keep.has(b.g)).map(b=>({...b,g:labels.find(l=>normName(l)===normName(b.g))}))})}
+const plLost=(c,labels)=>c.groupes.filter(g=>String(g.exos||"").trim()&&!labels.some(l=>normName(l)===normName(g.label))).length;
 const PL_DAYS=["L","M","M","J","V","S","D"];
 const PL_DEFDAYS={1:[2],2:[1,4],3:[1,3,5],4:[1,2,4,5],5:[1,2,3,4,5],6:[1,2,3,4,5,6]};
 const isoOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -4058,9 +4072,9 @@ const wdOf=d=>((d.getDay()+6)%7)+1;
 const nextMonday=()=>{const t=TODAY();const x=new Date(t);const w=wdOf(x);x.setDate(x.getDate()+(w===1?0:8-w));return isoOf(x)};
 const plParam=(o={})=>Object.fromEntries(PL_PARAMS.map(([k])=>[k,o[k]||""]));
 const plSeance=()=>({blocs:[],note:""});
-const plCycle=(nS=3)=>({semaines:2,labels:["",""],params:[plParam()],seances:Array.from({length:nS},plSeance),groupes:PL_GROUPS.map(l=>({label:l,exos:""}))});
-const plPhase=(i,nC=3,nS=3)=>({nom:"Phase "+(i+1),couleur:PL_COLORS[i%PL_COLORS.length],objectifs:"",cycles:Array.from({length:nC},()=>plCycle(nS)),criteres:""});
-function plBlank(pid,nP=3,nC=3,nS=3){return {patientId:pid,nom:"Plan de traitement",debut:nextMonday(),jours:PL_DEFDAYS[nS],nC,nS,phases:Array.from({length:nP},(_,i)=>plPhase(i,nC,nS))}}
+const plCycle=(nS=3,G=PL_GROUPS)=>({semaines:2,labels:["",""],params:[plParam()],seances:Array.from({length:nS},plSeance),groupes:G.map(l=>({label:l,exos:""}))});
+const plPhase=(i,nC=3,nS=3,G=PL_GROUPS)=>({nom:"Phase "+(i+1),couleur:PL_COLORS[i%PL_COLORS.length],objectifs:"",cycles:Array.from({length:nC},()=>plCycle(nS,G)),criteres:""});
+function plBlank(pid,nP=3,nC=3,nS=3,G=PL_GROUPS){return {patientId:pid,nom:"Plan de traitement",debut:nextMonday(),jours:PL_DEFDAYS[nS],nC,nS,phases:Array.from({length:nP},(_,i)=>plPhase(i,nC,nS,G))}}
 // Convertit un texte de séance (une ligne par bloc) en blocs reliés aux groupes du cycle
 function plParseSeance(txt,c){
   const blocs=[],rest=[];const G=c.groupes.map(g=>g.label);const two=c.params.length>1;
@@ -4101,8 +4115,9 @@ function plModeleGenou(pid){
      cycles:[cy([H1],["Hypertrophie",""],sH,G2),cy([H2],["Hypertrophie",""],sH,G2),cy([PT],["Force",""],sH,G2)]}]};
 }
 function plResize(p,nP,nC,nS){
-  const phases=Array.from({length:nP},(_,i)=>{const ph=p.phases[i]?JSON.parse(JSON.stringify(p.phases[i])):plPhase(i,nC,nS);
-    ph.cycles=Array.from({length:nC},(_,j)=>{const c=ph.cycles[j]||plCycle(nS);c.seances=Array.from({length:nS},(_,k)=>c.seances?.[k]||plSeance());return c});return ph});
+  const lastG=p.phases.length?plCurLabels(p.phases[p.phases.length-1].cycles.slice(-1)[0]):PL_GROUPS;
+  const phases=Array.from({length:nP},(_,i)=>{const ph=p.phases[i]?JSON.parse(JSON.stringify(p.phases[i])):plPhase(i,nC,nS,lastG);
+    ph.cycles=Array.from({length:nC},(_,j)=>{const c=ph.cycles[j]||plCycle(nS,ph.cycles.length?plCurLabels(ph.cycles[ph.cycles.length-1]):lastG);c.seances=Array.from({length:nS},(_,k)=>c.seances?.[k]||plSeance());return c});return ph});
   const jours=(p.jours||[]).length===p.nS&&nS!==p.nS?PL_DEFDAYS[nS]:p.jours;
   return {...p,nC,nS,jours,phases};
 }
@@ -4187,7 +4202,15 @@ function PlTimeline({pl,sch,focus,onFocus}){
     <div className="row sub" style=${{fontSize:11,marginTop:4}}><span>${fmtD(sch[0].start)}</span><div className="spacer"></div><span>${Math.round(tot/7)} semaines · ${sch.reduce((t,x)=>t+x.seances.length,0)} séances</span><div className="spacer"></div><span>${fmtD(sch[sch.length-1].end)}</span></div>
   </div>`;
 }
-function PlCycleBlock({db,d,i,j,sx,upd}){
+function GroupSetSelect({db,onPick,label="Jeu de groupes…",style}){
+  const sets=plGsets(db);
+  return html`<select className="inp" value="" onChange=${e=>{const x=sets.find(z=>z.id===e.target.value);if(x)onPick(x.g,x.l)}} style=${{width:"auto",maxWidth:190,fontSize:11.5,padding:"3px 6px",...(style||{})}}>
+    <option value="">${label}</option>
+    <optgroup label="Modèles">${sets.filter(x=>!x.mine).map(x=>html`<option key=${x.id} value=${x.id}>${x.l} : ${x.g.join(", ")}</option>`)}</optgroup>
+    ${sets.some(x=>x.mine)&&html`<optgroup label="Mes groupes">${sets.filter(x=>x.mine).map(x=>html`<option key=${x.id} value=${x.id}>${x.l} : ${x.g.join(", ")}</option>`)}</optgroup>`}
+  </select>`;
+}
+function PlCycleBlock({db,d,i,j,sx,upd,act,toast}){
   const ph=d.phases[i],c=ph.cycles[j],two=c.params.length>1,nC=ph.cycles.length;
   const U=fn=>upd(y=>fn(y.phases[i].cycles[j],y));
   const renameGroup=(k,v)=>U(cc=>{const old=cc.groupes[k].label;cc.groupes[k].label=v;cc.seances.forEach(s=>(s.blocs||[]).forEach(b=>{if(b.g===old)b.g=v}))});
@@ -4202,7 +4225,7 @@ function PlCycleBlock({db,d,i,j,sx,upd}){
         ${j>0&&html`<button className="btn sm ghost" onClick=${()=>U((cc,y)=>{y.phases[i].cycles[j]=JSON.parse(JSON.stringify(y.phases[i].cycles[j-1]))})}>Recopier le cycle ${j}</button>`}
         ${i>0&&html`<button className="btn sm ghost" onClick=${()=>U((cc,y)=>{const src=y.phases[i-1].cycles[j];if(src)y.phases[i].cycles[j]=JSON.parse(JSON.stringify(src))})}>Recopier le cycle ${j+1} de ${d.phases[i-1].nom}</button>`}
         <button className="btn sm ghost" onClick=${()=>U(cc=>{if(cc.params.length>1){cc.params=[cc.params[0]];cc.seances.forEach(s=>(s.blocs||[]).forEach(b=>{b.col=0}))}else{cc.params.push(plParam());cc.labels=[cc.labels?.[0]||"Hypertrophie",cc.labels?.[1]||"Force"]}})}>${two?"Retirer la 2e colonne":"Ajouter une 2e colonne (ex. force)"}</button>
-        <button className="btn sm ghost" onClick=${()=>U((cc,y)=>{y.phases[i].cycles[j]=plCycle(y.nS)})}>Vider ce cycle</button>
+        <button className="btn sm ghost" onClick=${()=>U((cc,y)=>{y.phases[i].cycles[j]=plCycle(y.nS,plCurLabels(cc))})}>Vider ce cycle</button>
         <div className="sub" style=${{fontSize:10.5,fontWeight:800,textTransform:"uppercase",letterSpacing:".04em",padding:"6px 8px 2px"}}>Préremplir avec un protocole</div>
         ${PL_QUAL.flatMap(q=>q.presets.map(pr=>html`<button key=${q.k+pr.nom} className="btn sm ghost" onClick=${()=>upd(y=>{const cc=y.phases[i].cycles[j];const m=cc.params.length>1?(plQualOf(cc,1)===q?1:plQualOf(cc,0)===q?0:(q.k==="hyp"?0:1)):0;plApplyPreset(y,q,pr,i,j,m)})}><i style=${{display:"inline-block",width:8,height:8,borderRadius:4,background:q.color,marginRight:6}}></i>${q.label} · ${pr.nom}${pr.steps?" (cycles "+(j+1)+"→)":""}</button>`))}
       </div></details>
@@ -4218,7 +4241,11 @@ function PlCycleBlock({db,d,i,j,sx,upd}){
         <td><${ExoChips} db=${db} value=${g.exos} on=${v=>U(cc=>{cc.groupes[k].exos=v})}/></td>
         <td style=${{width:24,textAlign:"center"}}><button className="btn sm ghost" style=${{padding:"0 4px"}} title="Retirer le groupe" onClick=${()=>U(cc=>{const l=cc.groupes[k].label;cc.groupes.splice(k,1);cc.seances.forEach(s=>{s.blocs=(s.blocs||[]).filter(b=>b.g!==l)})})}>×</button></td></tr>`)}
     </tbody></table>
-    <button className="btn sm ghost" style=${{fontSize:11,marginTop:2}} onClick=${()=>U(cc=>{cc.groupes.push({label:"Groupe "+(cc.groupes.length+1),exos:""})})}>+ groupe</button>
+    <div className="row" style=${{gap:6,flexWrap:"wrap",marginTop:2}}>
+      <button className="btn sm ghost" style=${{fontSize:11}} onClick=${()=>U(cc=>{cc.groupes.push({label:"Groupe "+(cc.groupes.length+1),exos:""})})}>+ groupe</button>
+      <${GroupSetSelect} db=${db} label="Changer les groupes…" onPick=${(G,l)=>{const n=plLost(c,G);if(n&&!confirm(`${n} groupe(s) avec des exercices vont disparaître de ce cycle. Continuer ?`))return;U(cc=>plSetGroups(cc,G))}}/>
+      ${act&&html`<button className="btn sm ghost" style=${{fontSize:11}} title="Enregistrer ces intitulés comme modèle réutilisable" onClick=${()=>{const n=prompt("Nom du modèle de groupes :",plCurLabels(c).slice(0,2).join(" / "));if(n&&n.trim()){act.savePlGroupSet({id:"gs-"+Date.now().toString(36),l:n.trim(),g:plCurLabels(c)});toast("Modèle de groupes enregistré")}}}>Enregistrer comme modèle</button>`}
+    </div>
     <div className="mini-t" style=${{marginTop:8}}>Séances de la semaine <span className="sub" style=${{fontWeight:500,textTransform:"none",letterSpacing:0}}>· touchez les groupes à inclure${two?" (2e touche = "+(c.labels?.[1]||"col. 2")+")":""}</span></div>
     <div style=${{display:"grid",gridTemplateColumns:`repeat(${Math.min(c.seances.length,3)},1fr)`,gap:6}}>
       ${c.seances.map((s,k)=>html`<${SeanceCard} key=${k} c=${c} s=${s} k=${k} on=${ns=>U(cc=>{cc.seances[k]=ns})}/>`)}
@@ -4236,9 +4263,13 @@ function GlobalPlanView({db,pid,act,toast,goTab}){
   const dirty=d&&JSON.stringify(d)!==base;
   const upd=fn=>setD(x=>{const y=JSON.parse(JSON.stringify(x));fn(y);return y});
   const persist=()=>{const id=act.saveRec("plans",{...d,patientId:pid});const nd={...d,id};setD(nd);setBase(JSON.stringify(nd));if(!sel)setSel(id);return nd};
-  const create=tpl=>{const p=tpl==="genou"?plModeleGenou(pid):plBlank(pid);const id=act.saveRec("plans",p);setSel(id);toast(`Plan ${id} créé`)};
+  const [gsId,setGsId]=useState(()=>guessRegion(db,pid));const gsCur=plGsets(db).find(x=>x.id===gsId)||PL_GSETS[0];
+  const create=tpl=>{const p=tpl==="genou"?plModeleGenou(pid):plBlank(pid,3,3,3,gsCur.g);const id=act.saveRec("plans",p);setSel(id);toast(`Plan ${id} créé`)};
   const p=db.patients.find(x=>x.id===pid);
   if(!d)return html`<div className="ph-hero"><h3>Vue globale du traitement</h3><div className="sub" style=${{marginBottom:14,maxWidth:720}}>Construisez tout le traitement sur un seul écran : phases, cycles, paramètres, groupes d'exercices et séances de la semaine. Un bouton l'envoie ensuite dans <b>Phases & cycles</b> (avec les dates) et dans le <b>Calendrier</b> (séances planifiées, exercices pré-remplis).</div>
+    <div className="mini-t">Groupes d'exercices de départ <span className="sub" style=${{fontWeight:500,textTransform:"none",letterSpacing:0}}>· proposés selon la région du dernier bilan, modifiables ensuite</span></div>
+    <div className="row" style=${{gap:6,flexWrap:"wrap",marginBottom:6}}>${plGsets(db).map(x=>html`<button key=${x.id} className=${"chip"+(gsId===x.id?" on":"")} onClick=${()=>setGsId(x.id)} style=${{cursor:"pointer",fontWeight:700,border:"1px solid "+(gsId===x.id?"var(--ink)":"var(--line)"),background:gsId===x.id?"var(--ink)":"transparent",color:gsId===x.id?"#fff":"var(--ink)"}}>${x.l}${x.mine?" ★":""}</button>`)}</div>
+    <div className="sub" style=${{fontSize:12,marginBottom:14}}>${gsCur.g.join(" · ")}</div>
     <div className="row"><button className="btn yellow" onClick=${()=>create("vide")}><${Ico} n="plus" s=${15} w=${2.2}/>Plan vierge (3 × 3)</button><button className="btn" onClick=${()=>create("genou")}>Partir de mon modèle genou (Excel)</button></div></div>`;
   const nP=d.phases.length,nC=d.nC||3,nS=d.nS||3;const sch=plSchedule(d);const sAt=(i,j)=>sch.find(x=>x.i===i&&x.j===j);
   const setN=(a,b,c)=>setD(x=>plResize(x,Math.max(1,Math.min(6,a)),Math.max(1,Math.min(6,b)),Math.max(1,Math.min(6,c))));
@@ -4284,7 +4315,10 @@ function GlobalPlanView({db,pid,act,toast,goTab}){
         <details className="pl-menu"><summary className="btn sm ghost">Plus ⋯</summary><div className="pl-pop" onClick=${e=>{const dt=e.currentTarget.closest("details");if(dt)dt.open=false}} style=${{right:0}}>
           <button className="btn sm ghost" onClick=${printIt}>Imprimer (A4 paysage)</button>
           <button className="btn sm ghost" onClick=${()=>{const id=act.saveRec("plans",{...JSON.parse(JSON.stringify(d)),id:undefined,appliedAt:undefined,nom:d.nom+" (copie)",patientId:pid});setSel(id);toast("Copie créée")}}>Dupliquer le plan</button>
-          <button className="btn sm ghost" onClick=${()=>create("vide")}>Nouveau plan vierge</button>
+          <button className="btn sm ghost" onClick=${()=>create("vide")}>Nouveau plan vierge (${gsCur.l})</button>
+          <div className="sub" style=${{fontSize:10.5,fontWeight:800,textTransform:"uppercase",letterSpacing:".04em",padding:"6px 8px 2px"}}>Groupes de tout le plan</div>
+          <div style=${{padding:"0 8px 6px"}}><${GroupSetSelect} db=${db} label="Remplacer dans tous les cycles…" onPick=${(G,l)=>{const n=d.phases.reduce((t,ph)=>t+ph.cycles.reduce((u,c)=>u+plLost(c,G),0),0);if(!confirm(`Remplacer les groupes de tous les cycles par « ${l} » ?${n?` ${n} groupe(s) avec des exercices disparaîtront.`:""} Les groupes au même nom gardent leurs exercices.`))return;upd(y=>y.phases.forEach(ph=>ph.cycles.forEach(c=>plSetGroups(c,G))));toast("Groupes remplacés dans tout le plan")}}/></div>
+          ${(db.settings.plGroupSets||[]).length>0&&html`<div style=${{padding:"0 8px 6px",fontSize:11.5}}>${db.settings.plGroupSets.map(x=>html`<div key=${x.id} className="row" style=${{gap:4}}>★ ${x.l}<div className="spacer"></div><button className="btn sm ghost" style=${{padding:"0 4px",fontSize:11}} title="Supprimer ce modèle" onClick=${()=>{if(confirm("Supprimer le modèle « "+x.l+" » ?"))act.delPlGroupSet(x.id)}}>×</button></div>`)}</div>`}
           <button className="btn sm ghost" onClick=${()=>create("genou")}>Nouveau plan · modèle genou</button>
           ${d.id&&html`<button className="btn sm ghost" style=${{color:"var(--bad)"}} onClick=${()=>{if(confirm("Supprimer ce plan ? Les phases et séances déjà créées dans le planning sont conservées.")){act.delRec("plans",d.id);setSel(plans.find(x=>x.id!==d.id)?.id||null);toast("Plan supprimé")}}}>Supprimer le plan</button>`}
         </div></details>
@@ -4302,11 +4336,11 @@ function GlobalPlanView({db,pid,act,toast,goTab}){
       ${mode==="all"?html`<div style=${{display:"grid",gridTemplateColumns:`repeat(${nP},minmax(420px,1fr))`,border:"1px solid var(--line)",borderRadius:12,overflow:"hidden",background:"var(--surface)",minWidth:nP*420}}>
         ${d.phases.map((ph,i)=>html`<div key=${i} id=${"plph-"+i} style=${{borderRight:i<nP-1?"2px solid var(--ink)":"",display:"flex",flexDirection:"column"}}>
           ${phaseHead(ph,i)}${objBlock(ph,i)}
-          ${ph.cycles.map((c,j)=>html`<div key=${j} style=${{borderBottom:j<nC-1?"5px solid var(--ink)":"1px solid var(--line)"}}><${PlCycleBlock} db=${db} d=${d} i=${i} j=${j} sx=${sAt(i,j)} upd=${upd}/></div>`)}
+          ${ph.cycles.map((c,j)=>html`<div key=${j} style=${{borderBottom:j<nC-1?"5px solid var(--ink)":"1px solid var(--line)"}}><${PlCycleBlock} db=${db} d=${d} i=${i} j=${j} sx=${sAt(i,j)} upd=${upd} act=${act} toast=${toast}/></div>`)}
           <div style=${{marginTop:"auto"}}>${critBlock(ph,i)}</div></div>`)}
       </div>`:shown.map(i=>{const ph=d.phases[i];return html`<div key=${i} style=${{border:"1px solid var(--line)",borderRadius:12,overflow:"hidden",background:"var(--surface)"}}>
           ${phaseHead(ph,i)}${objBlock(ph,i)}
-          <div style=${{display:"grid",gridTemplateColumns:`repeat(${nC},minmax(380px,1fr))`,minWidth:nC*380}}>${ph.cycles.map((c,j)=>html`<div key=${j} style=${{borderRight:j<nC-1?"4px solid var(--ink)":""}}><${PlCycleBlock} db=${db} d=${d} i=${i} j=${j} sx=${sAt(i,j)} upd=${upd}/></div>`)}</div>
+          <div style=${{display:"grid",gridTemplateColumns:`repeat(${nC},minmax(380px,1fr))`,minWidth:nC*380}}>${ph.cycles.map((c,j)=>html`<div key=${j} style=${{borderRight:j<nC-1?"4px solid var(--ink)":""}}><${PlCycleBlock} db=${db} d=${d} i=${i} j=${j} sx=${sAt(i,j)} upd=${upd} act=${act} toast=${toast}/></div>`)}</div>
           ${critBlock(ph,i)}</div>`})}
     </div></div>`}
     <${ExDatalist} db=${db} id="pl-exlist"/>
@@ -4631,6 +4665,8 @@ function App({vault}={}){
     delRec(coll,id){setDbRaw(d=>{const x=(d[coll]||[]).find(y=>y.id===id);return {...d,[coll]:(d[coll]||[]).filter(y=>y.id!==id),audit:[...d.audit,logEntry(x?.patientId,"Suppression "+id)]}})},
     saveTemplate(t){setDbRaw(d=>({...d,settings:{...d.settings,bilanTemplates:[...(d.settings.bilanTemplates||[]),t]},audit:[...d.audit,logEntry(null,"Nouveau modèle de bilan : "+t.l)]}))},
     applyPlan(pl){setDbRaw(d=>applyPlanToDb(d,pl,false,logEntry))},
+    savePlGroupSet(gs){setDbRaw(d=>({...d,settings:{...d.settings,plGroupSets:[...(d.settings.plGroupSets||[]),gs]},audit:[...d.audit,logEntry(null,"Nouveau modèle de groupes d'exercices : "+gs.l)]}))},
+    delPlGroupSet(id){setDbRaw(d=>({...d,settings:{...d.settings,plGroupSets:(d.settings.plGroupSets||[]).filter(x=>x.id!==id)}}))},
     saveSeancesBulk(list){setDbRaw(d=>{let n=d.counters.S||0;const recs=list.map(x=>{n++;return {...x,id:"S-"+pad(n),updatedAt:nowISO()}});return {...d,counters:{...d.counters,S:n},seances:[...d.seances,...recs],audit:[...d.audit,logEntry(list[0]?.patientId,`Planification de ${recs.length} séance(s)`)]}})},
     saveSeanceTemplate(t){setDbRaw(d=>({...d,seanceTemplates:[...(d.seanceTemplates||[]),t],audit:[...d.audit,logEntry(null,"Nouveau modèle de séance : "+t.nom)]}))},
     setSettings(S){setDbRaw(d=>({...d,settings:S,audit:[...d.audit,logEntry(null,"Paramètres de calcul modifiés")]}))},
